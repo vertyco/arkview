@@ -1,0 +1,8 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ArkView"
+description = "A lightweight API/Plugin for Ark"
+readme = "README.md"
