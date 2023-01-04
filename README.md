@@ -7,12 +7,13 @@ A client side API plugin for the Arkon bot to view your map data!
 ![black](https://img.shields.io/badge/style-black-000000?style=for-the-badge&?link=https://github.com/psf/black)
 ![license](https://img.shields.io/github/license/Vertyco/arkview?style=for-the-badge)
 
+![Platform](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
 ![Lines of code](https://img.shields.io/tokei/lines/github/Vertyco/arkview?color=yellow&label=Lines&style=for-the-badge)
 ![GitHub repo size](https://img.shields.io/github/repo-size/Vertyco/arkview?color=blueviolet&style=for-the-badge)
 
 # How To Use
 
-### Windows
+### Windows Only
 You will need windows with the latest .NET v6.0 framework to run this client
 1. [Get .NET Framework Here](https://dotnet.microsoft.com/en-us/download)
 2. Download the latest client from [Releases](https://github.com/vertyco/arkview/releases)
