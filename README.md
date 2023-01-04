@@ -1,6 +1,6 @@
 # ArkView
 
-A client side plugin for the Arkon bot to view your map data!
+A client side API plugin for the Arkon bot to view your map data!
 
 ![Python 3.8](https://img.shields.io/badge/python-v3.11-orange?style=for-the-badge)
 ![Discord.py](https://img.shields.io/badge/discord-py-blue?style=for-the-badge)
