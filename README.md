@@ -25,7 +25,7 @@ You will need windows with the latest .NET v6.0 framework to run this client
 # Contributing
 
 If you have any suggestions, or found any bugs, please ping me in Discord (Vertyco#0117)
-or [open an issue](https://github.com/vertyco/vrt-cogs/issues) on my repo!
+or [open an issue](https://github.com/vertyco/arkview/issues) on my repo!
 
 If you would like to contribute, please talk to me on Discord first about your ideas before opening a PR.
 
