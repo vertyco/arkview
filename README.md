@@ -21,6 +21,9 @@ You will need windows with the latest .NET v6.0 framework to run this client
 5. Add that port to the server you have it on with the bot via `[p]avset addport <cluster> <server> <port>`
    1. If you have the client running a different computer from the map, you can use `[p]avset addpi` to add a separate ip for the client
 
+# Credits
+This plugin wouldn't be possible without miragedmuk's work on his fork of the old Ark savegame parser, lots of love!
+https://github.com/miragedmuk/ASV
 
 # Contributing
 
