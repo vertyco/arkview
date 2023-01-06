@@ -47,8 +47,11 @@ class Tools:
     @staticmethod
     def is_running(process: str) -> bool:
         """Check if a process is running"""
-        running = [p.name() for p in psutil.process_iter()]
-        return process in running
+        try:
+            running = [p.name() for p in psutil.process_iter()]
+            return process in running
+        except psutil.NoSuchProcess:
+            return False
 
     @staticmethod
     def read_data(path: Union[str, Path]) -> dict:

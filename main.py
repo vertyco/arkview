@@ -61,7 +61,7 @@ class ArkViewer:
     https://dotnet.microsoft.com/en-us/download
     """
 
-    __version__ = "0.1.16"
+    __version__ = "0.1.17"
 
     def __init__(self):
         self.exe = (
