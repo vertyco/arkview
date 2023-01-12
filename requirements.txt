@@ -6,6 +6,6 @@ psutil~=5.9.4
 aiohttp~=3.8.3
 pre-commit~=2.21.0
 msgpack~=1.0.4
-
 colorama~=0.4.6
 pydantic~=1.10.4
+py-cpuinfo~=9.0.0
