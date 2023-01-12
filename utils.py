@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 from typing import Union
 
@@ -115,7 +116,7 @@ class Tools:
 
         # -/-/-/CPU-/-/-/
         cpu_count = psutil.cpu_count()  # Int
-        cpu_perc = psutil.cpu_percent(interval=3, percpu=True)  # List of floats
+        cpu_perc = psutil.cpu_percent(interval=0.5, percpu=True)  # List of floats
         cpu_freq = psutil.cpu_freq(percpu=True)  # List of Objects
         cpu_info = cpuinfo.get_cpu_info()  # Dict
         cpu_type = cpu_info["brand_raw"] if "brand_raw" in cpu_info else "Unknown"
@@ -146,6 +147,10 @@ class Tools:
         sent = get_size(net.bytes_sent)
         recv = get_size(net.bytes_recv)
 
+        uptime = (
+            datetime.now() - datetime.fromtimestamp(psutil.boot_time())
+        ).total_seconds()
+
         res = {
             "cpu": {
                 "cores": cpu_count,
@@ -162,7 +167,8 @@ class Tools:
                 "load": disk_usage,
                 "loadbar": get_bar(disk_usage),
             },
-            "net": {"sent": sent, "recieved": recv},
+            "net": {"sent": sent, "received": recv},
+            "uptime": uptime,
         }
         return res
 
