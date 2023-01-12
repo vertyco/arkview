@@ -72,7 +72,7 @@ class ArkViewer:
     https://dotnet.microsoft.com/en-us/download
     """
 
-    __version__ = "0.2.18"
+    __version__ = "0.2.19"
 
     def __init__(self):
         self.exe = (
@@ -379,13 +379,14 @@ class ArkViewer:
             stats = await loop.run_in_executor(
                 self.threadpool, functools.partial(Tools().get_stats)
             )
+            stats["version"] = self.__version__
+            return stats
         except Exception as e:
             log.error(f"Failed to pull stats! {e}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to pull stats! {e}",
             )
-        return stats
 
     @router.get("/banlist")
     async def get_banlist(self):
