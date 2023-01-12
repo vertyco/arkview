@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn.config
+from colorama import Fore
 from fastapi import FastAPI, HTTPException
 from fastapi_utils.cbv import cbv
 from fastapi_utils.inferring_router import InferringRouter
@@ -51,6 +52,16 @@ mapfile: Optional[str] = ""
 cluster: Optional[str] = ""
 threads: Optional[int] = round(os.cpu_count() / 2)
 
+welcome = r"""
+                _  __      ___
+     /\        | | \ \    / (_)
+    /  \   _ __| | _\ \  / / _  _____      _____ _ __
+   / /\ \ | '__| |/ /\ \/ / | |/ _ \ \ /\ / / _ \ '__|
+  / ____ \| |  |   <  \  /  | |  __/\ V  V /  __/ |
+ /_/    \_\_|  |_|\_\  \/   |_|\___| \_/\_/ \___|_|
+"""
+print(Fore.CYAN + welcome + Fore.RESET)
+
 
 @cbv(router)
 class ArkViewer:
@@ -61,7 +72,7 @@ class ArkViewer:
     https://dotnet.microsoft.com/en-us/download
     """
 
-    __version__ = "0.1.17"
+    __version__ = "0.2.18"
 
     def __init__(self):
         self.exe = (
@@ -72,7 +83,7 @@ class ArkViewer:
         self.root = os.path.abspath(os.path.dirname(__file__))
         self.output = os.path.join(self.root, "output")
 
-        self.threadpool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="parser")
+        self.threadpool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="parser")
         self.syncing = False
         self.debug = None
         self.port = 8000
@@ -359,6 +370,22 @@ class ArkViewer:
             if item:
                 res["last_modified"] = item["last_modified"]
         return res
+
+    @router.get("/stats")
+    async def get_stats(self):
+        """Get the current server's system info"""
+        loop = asyncio.get_event_loop()
+        try:
+            stats = await loop.run_in_executor(
+                self.threadpool, functools.partial(Tools().get_stats)
+            )
+        except Exception as e:
+            log.error(f"Failed to pull stats! {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to pull stats! {e}",
+            )
+        return stats
 
     @router.get("/banlist")
     async def get_banlist(self):
