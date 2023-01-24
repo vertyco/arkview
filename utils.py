@@ -84,21 +84,26 @@ class Tools:
         return is_installed
 
     @staticmethod
-    def get_affinity_mask(threads: int) -> int:
+    def get_affinity_mask(threads: int) -> str:
+        # https://poweradm.com/set-cpu-affinity-powershell/
         cpus = os.cpu_count()
         if threads > cpus:
             threads = cpus
+
         options = []
         num = 1
-        for i in range(cpus):
+        for c in range(cpus):
             if not options:
                 options.append(num)
             else:
                 num = num * 2
                 options.append(num)
-        options = options[:threads]
+
+        # options = options[:threads]
+        # Reverse and use last core first
+        options = options[-threads:]
         mask = sum(options) if options else 1
-        return mask
+        return hex(mask)
 
     @staticmethod
     def get_stats() -> dict:
@@ -182,3 +187,9 @@ class Const:
         "Debug": False,
     }
     dotnet = "https://dotnet.microsoft.com/en-us/download"
+
+
+if __name__ == "__main__":
+    for i in range(1, os.cpu_count() + 1):
+        affinity_mask = Tools().get_affinity_mask(i)
+        print(f"Mask for {i} threads: {affinity_mask}")

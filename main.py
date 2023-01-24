@@ -72,7 +72,7 @@ class ArkViewer:
     https://dotnet.microsoft.com/en-us/download
     """
 
-    __version__ = "0.2.19"
+    __version__ = "0.2.20"
 
     def __init__(self):
         self.exe = (
@@ -207,6 +207,7 @@ class ArkViewer:
                     log.debug("Running parser with cluster included")
 
             self.syncing = True
+            log.debug(cmd)
             os.system(cmd)
             await asyncio.sleep(3)
             while Tools().is_running("ASVExport.exe"):
