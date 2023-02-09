@@ -77,6 +77,8 @@ class Tools:
             log.info(f"Current .NET version: {version}")
             if version < "6.0.0":
                 is_installed = False
+            elif version > "6.9.9":
+                is_installed = False
 
         if not is_installed:
             log.error(".NET V6.0 framework is REQUIRED!")
