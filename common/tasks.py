@@ -2,6 +2,7 @@ import asyncio
 import logging
 import multiprocessing
 import os
+import subprocess
 from configparser import ConfigParser
 from datetime import datetime
 from pathlib import Path
@@ -158,8 +159,12 @@ class ArkViewer:
             cache.last_export = map_file_modified
 
             # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
+            if IS_WINDOWS:
+                pre = f"start /LOW /MIN /AFFINITY 0x800 {cache.exe_file} all"
+            else:
+                pre = f"taskset -c 0 dotnet {cache.exe_file} all"
+
             sep = "\\" if IS_WINDOWS else "/"
-            pre = f"start /LOW /MIN /AFFINITY 0x800 {cache.exe_file} all"
             ext = f' "{cache.map_file}" "{cache.output_dir}{sep}"'
             if cache.cluster_dir:
                 ext = f' "{cache.map_file}" "{cache.cluster_dir}{sep}" "{cache.output_dir}{sep}"'
@@ -167,7 +172,10 @@ class ArkViewer:
 
             try:
                 cache.syncing = True
-                os.system(command)
+                if IS_WINDOWS:
+                    os.system(command)
+                else:
+                    subprocess.run(command, shell=True)
                 await asyncio.sleep(5)
                 await wait_for_process("ASVExport.exe")
                 await asyncio.sleep(5)
