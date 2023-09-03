@@ -281,7 +281,7 @@ class ArkViewer:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    @router.post("/updatebanlist")
+    @router.put("/updatebanlist")
     async def update_banlist(self, request: Request, banlist: Banlist):
         await self.check_keys(request)
         global cache
@@ -337,13 +337,20 @@ class ArkViewer:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    @router.get("/file/exists")
+    @router.post("/file/exists")
     async def check_file_exists(self, request: Request, filepath: FilePath):
         await self.check_keys(request)
         payload = {"exists": Path(filepath.path).exists(), **self.info()}
         return JSONResponse(content=payload)
 
-    @router.get("/file/get")
+    @router.post("/file/info")
+    async def get_file_info(self, request: Request, filepath: FilePath):
+        await self.check_keys(request)
+        stat = Path(filepath.path).stat()
+        payload = {"st_mtime": stat.st_mtime, "size": stat.st_size, **self.info()}
+        return JSONResponse(content=payload)
+
+    @router.post("/file/get")
     async def get_file(self, request: Request, filepath: FilePath):
         await self.check_keys(request)
         try:
@@ -363,14 +370,18 @@ class ArkViewer:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    @router.delete("/file/listdir")
+    @router.post("/file/listdir")
     async def list_dir(self, request: Request, filepath: FilePath):
         await self.check_keys(request)
         if not Path(filepath.path).exists():
-            raise HTTPException(status_code=400, detail="Directory does not exist!")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Directory '{filepath.path}' does not exist!",
+            )
         if not Path(filepath.path).is_dir():
             raise HTTPException(
-                status_code=401, detail="Path is not a valid directory!"
+                status_code=401,
+                detail=f"'{filepath.path}' is not a valid directory!",
             )
         try:
             contents = [str(file) for file in Path(filepath.path).iterdir()]
