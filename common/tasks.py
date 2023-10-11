@@ -204,7 +204,7 @@ class ArkViewer:
             if target and target.lower() != key:
                 continue
 
-            last_modified = int(export_file.stat().st_mtime)
+            # last_modified = int(export_file.stat().st_mtime)
             tries = 0
             data = None
 
@@ -224,7 +224,7 @@ class ArkViewer:
                 continue
 
             try:
-                cache.exports[key] = {"data": data, "last_modified": last_modified}
+                cache.exports[key] = data
                 log.info(f"Cached {export_file.name}")
             except Exception as e:
                 log.error(f"Failed to cache export: {type(data)}", exc_info=e)
@@ -260,7 +260,8 @@ class ArkViewer:
             "last_export": cache.last_export,
             "last_output": cache.last_output,
             "port": cache.port,
-            "map_file": str(cache.map_file),
+            "map_name": cache.map_file.name,
+            "map_path": str(cache.map_file),
             "cluster_dir": str(cache.cluster_dir),
             "version": VERSION,
             "cached_keys": list(cache.exports.keys()),
@@ -324,18 +325,18 @@ class ArkViewer:
         if datatype.lower() == "all":
             data = cache.exports
         else:
-            data = cache.exports.get(datatype)
-
-        if not data:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Datatype {datatype} not cached yet!",
-                headers=info,
-            )
+            target_data = cache.exports.get(datatype)
+            if not target_data:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Datatype {datatype} not cached yet!",
+                    headers=info,
+                )
+            data = {datatype: target_data}
 
         return JSONResponse(content={**data, **info})
 
-    @router.get("/sysinfo")
+    @router.get("/stats")
     async def get_system_info(self, request: Request):
         await self.check_keys(request)
         base = self.info()
@@ -378,6 +379,15 @@ class ArkViewer:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    @router.put("/file/put")
+    async def put_file(self, request: Request, upload: FileUpload):
+        await self.check_keys(request)
+        try:
+            Path(upload.path).write_bytes(upload.file)
+            return JSONResponse(content={"success": True, **self.info()})
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     @router.post("/file/listdir")
     async def list_dir(self, request: Request, filepath: FilePath):
         await self.check_keys(request)
@@ -394,14 +404,5 @@ class ArkViewer:
         try:
             contents = [str(file) for file in Path(filepath.path).iterdir()]
             return JSONResponse(content={"contents": contents, **self.info()})
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @router.put("/file/put")
-    async def put_file(self, request: Request, upload: FileUpload):
-        await self.check_keys(request)
-        try:
-            Path(upload.path).write_bytes(upload.file)
-            return JSONResponse(content={"success": True, **self.info()})
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
