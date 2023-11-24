@@ -13,7 +13,7 @@ log = logging.getLogger("arkview.main")
 
 
 class Manager:
-    """Compile with 'pyinstaller.exe --clean main.spec'"""
+    """Compile with 'pyinstaller.exe --clean app.spec'"""
 
     def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop: asyncio.AbstractEventLoop = loop

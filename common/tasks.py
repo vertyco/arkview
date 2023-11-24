@@ -2,32 +2,21 @@ import asyncio
 import logging
 import multiprocessing
 import os
-import subprocess
 from configparser import ConfigParser
-from datetime import datetime
 from pathlib import Path
 
-import orjson
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi_utils.cbv import cbv
 from fastapi_utils.inferring_router import InferringRouter
 from uvicorn import Config, Server
 
-from common.constants import (
-    API_CONF,
-    BAR,
-    CONFIG,
-    EXE_FILE,
-    IS_EXE,
-    IS_WINDOWS,
-    OUTPUT_DIR,
-    ROOT_DIR,
-    VALID_DATATYPES,
-)
+from common.constants import API_CONF, IS_EXE, IS_WINDOWS, VALID_DATATYPES
+from common.exporter import export, load_outputs
 from common.logger import init_sentry
-from common.models import Banlist, Cache, FilePath, FileUpload
-from common.utils import dotnet_installed, format_sys_info, wait_for_process
+from common.models import Banlist, cache  # noqa
+from common.statusbar import status_bar
+from common.utils import dotnet_installed, format_sys_info
 from common.version import VERSION
 
 api = FastAPI()
@@ -35,13 +24,6 @@ router = InferringRouter()
 parser = ConfigParser()
 
 log = logging.getLogger("arkview")
-
-cache = Cache(
-    config=CONFIG,
-    root_dir=ROOT_DIR,
-    output_dir=OUTPUT_DIR,
-    exe_file=EXE_FILE,
-)
 
 
 @cbv(router)
@@ -75,18 +57,6 @@ class ArkViewer:
                 log.info("Initializing Sentry")
                 init_sentry(dsn=dsn, version=VERSION)
 
-            cache.map_file = settings.get("MapFilePath", fallback="").replace('"', "")
-            if not cache.map_file:
-                log.error("Map file path has not been set!")
-                return False
-            if not cache.map_file.lower().endswith(".ark"):
-                log.error("Map file must have the .ark extension!")
-                return False
-            if not Path(cache.map_file).exists():
-                log.error("Map file does not exist!")
-                return False
-            cache.map_file = Path(cache.map_file)
-
             cache.cluster_dir = settings.get("ClusterFolderPath", fallback="").replace(
                 '"', ""
             )
@@ -95,25 +65,21 @@ class ArkViewer:
                     "Cluster dir has not been set, some features will be unavailable!"
                 )
             elif not Path(cache.cluster_dir).exists():
-                log.warning(
-                    "Cluster dir does not exist, some features will be unavailable"
-                )
-                cache.cluster_dir = ""
+                log.error("Cluster dir does not exist!")
+                return False
             elif not Path(cache.cluster_dir).is_dir():
-                log.warning(
-                    "Cluster path is not a directory! Some features will be unavailable"
-                )
-                cache.cluster_dir = ""
+                log.error("Cluster path is not a directory!")
+                return False
             else:
                 cache.cluster_dir = Path(cache.cluster_dir)
 
             cache.ban_file = settings.get("BanListFile", fallback="").replace('"', "")
-            if not Path(cache.ban_file).exists():
+            if cache.ban_file and not Path(cache.ban_file).exists():
                 log.warning("Banlist file does not exist!")
-                cache.ban_file = ""
+                return False
             elif cache.ban_file and not cache.ban_file.lower().endswith(".txt"):
                 log.warning("Invalid Banlist file!")
-                cache.ban_file = ""
+                return False
 
         txt = (
             f"\nRunning as EXE: {cache.root_dir}\n"
@@ -128,108 +94,13 @@ class ArkViewer:
         log.info(txt)
         if IS_WINDOWS and not dotnet_installed():
             return
-        if IS_WINDOWS and IS_EXE:
-            asyncio.create_task(self.status_bar(), name="status_bar")
+
         asyncio.create_task(self.server(), name="arkview_server")
-        asyncio.create_task(self.export(), name="arkview_export")
-        asyncio.create_task(self.load_outputs(), name="load_outputs")
+        asyncio.create_task(export(), name="arkview_export")
+        asyncio.create_task(load_outputs(), name="load_outputs")
+        if IS_WINDOWS and IS_EXE:
+            asyncio.create_task(status_bar(), name="status_bar")
         return True
-
-    async def status_bar(self):
-        await asyncio.sleep(5)
-        global cache
-        index = 0
-        while True:
-            cmd = f"title ArkViewer {VERSION} {BAR[index]}"
-            if cache.syncing:
-                cmd += " [Syncing...]"
-            os.system(cmd)
-            index += 1
-            index %= len(BAR)
-            await asyncio.sleep(0.15)
-
-    async def export(self):
-        global cache
-        while True:
-            map_file_modified = int(cache.map_file.stat().st_mtime)
-            if cache.last_export == map_file_modified:
-                await asyncio.sleep(2)
-                continue
-            # Run exporter
-            cache.last_export = map_file_modified
-
-            # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
-            if IS_WINDOWS:
-                pre = f"start /LOW /MIN /AFFINITY 0x800 {cache.exe_file} all"
-            else:
-                pre = f"taskset -c 0 dotnet {cache.exe_file} all"
-
-            sep = "\\" if IS_WINDOWS else "/"
-            ext = f' "{cache.map_file}" "{cache.output_dir}{sep}"'
-            if cache.cluster_dir:
-                ext = f' "{cache.map_file}" "{cache.cluster_dir}{sep}" "{cache.output_dir}{sep}"'
-            command = pre + ext
-
-            try:
-                cache.syncing = True
-                if IS_WINDOWS:
-                    os.system(command)
-                else:
-                    subprocess.run(command, shell=True)
-                await asyncio.sleep(5)
-                await wait_for_process("ASVExport.exe")
-                await asyncio.sleep(5)
-            except Exception as e:
-                log.error("Export failed", exc_info=e)
-            finally:
-                cache.syncing = False
-
-            try:
-                cache.reading = True
-                await self.load_outputs()
-            except Exception as e:
-                log.error("Failed to load outputs", exc_info=e)
-            finally:
-                cache.reading = False
-
-    async def load_outputs(self, target: str = ""):
-        global cache
-        for export_file in cache.output_dir.iterdir():
-            key = (
-                export_file.name.replace("ASV_", "")
-                .replace(".json", "")
-                .lower()
-                .strip()
-            )
-            if target and target.lower() != key:
-                continue
-
-            # last_modified = int(export_file.stat().st_mtime)
-            tries = 0
-            data = None
-
-            while tries < 3:
-                tries += 1
-                try:
-                    raw_file = export_file.read_bytes()
-                    data = await asyncio.to_thread(orjson.loads, raw_file)
-                    break
-                except (orjson.JSONDecodeError, UnicodeDecodeError):
-                    await asyncio.sleep(3)
-                except Exception as e:
-                    log.warning(f"Failed to load {export_file.name}", exc_info=e)
-                    break
-
-            if not data:
-                continue
-
-            try:
-                cache.exports[key] = data
-                log.info(f"Cached {export_file.name}")
-            except Exception as e:
-                log.error(f"Failed to cache export: {type(data)}", exc_info=e)
-
-        cache.last_output = int(datetime.now().timestamp())
 
     async def server(self):
         global cache
@@ -343,66 +214,5 @@ class ArkViewer:
         try:
             stats = await asyncio.to_thread(format_sys_info)
             return JSONResponse(content={**base, **stats})
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @router.post("/file/exists")
-    async def check_file_exists(self, request: Request, filepath: FilePath):
-        await self.check_keys(request)
-        payload = {"exists": Path(filepath.path).exists(), **self.info()}
-        return JSONResponse(content=payload)
-
-    @router.post("/file/info")
-    async def get_file_info(self, request: Request, filepath: FilePath):
-        await self.check_keys(request)
-        stat = Path(filepath.path).stat()
-        payload = {"st_mtime": stat.st_mtime, "size": stat.st_size, **self.info()}
-        return JSONResponse(content=payload)
-
-    @router.post("/file/get")
-    async def get_file(self, request: Request, filepath: FilePath):
-        await self.check_keys(request)
-        try:
-            payload = {"file": Path(filepath.path).read_bytes(), **self.info()}
-            return JSONResponse(content=payload)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @router.delete("/file/delete")
-    async def delete_file(self, request: Request, filepath: FilePath):
-        await self.check_keys(request)
-        if not Path(filepath.path).exists():
-            raise HTTPException(status_code=400, detail="File does not exist!")
-        try:
-            Path(filepath.path).unlink()
-            return JSONResponse(content={"success": True, **self.info()})
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @router.put("/file/put")
-    async def put_file(self, request: Request, upload: FileUpload):
-        await self.check_keys(request)
-        try:
-            Path(upload.path).write_bytes(upload.file)
-            return JSONResponse(content={"success": True, **self.info()})
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @router.post("/file/listdir")
-    async def list_dir(self, request: Request, filepath: FilePath):
-        await self.check_keys(request)
-        if not Path(filepath.path).exists():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Directory '{filepath.path}' does not exist!",
-            )
-        if not Path(filepath.path).is_dir():
-            raise HTTPException(
-                status_code=401,
-                detail=f"'{filepath.path}' is not a valid directory!",
-            )
-        try:
-            contents = [str(file) for file in Path(filepath.path).iterdir()]
-            return JSONResponse(content={"contents": contents, **self.info()})
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
