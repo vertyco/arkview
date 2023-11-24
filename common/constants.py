@@ -12,6 +12,8 @@ BanListFile =
 MapFilePath =
 ClusterFolderPath =
 Debug = False
+DSN =
+DataOnly = False
 """
 
 IS_WINDOWS = True if "C:\\Users" in os.environ.get("USERPROFILE", "") else False

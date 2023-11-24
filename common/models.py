@@ -2,6 +2,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from .constants import CONFIG, EXE_FILE, OUTPUT_DIR, ROOT_DIR
+
 
 class Banlist(BaseModel):
     bans: list[str]
@@ -27,11 +29,9 @@ class Cache(BaseModel):
     ban_file: str | Path = ""
 
 
-class FilePath(BaseModel):
-    path: str
-
-
-class FileUpload(BaseModel):
-    name: str
-    path: str
-    file: bytes
+cache = Cache(
+    config=CONFIG,
+    root_dir=ROOT_DIR,
+    output_dir=OUTPUT_DIR,
+    exe_file=EXE_FILE,
+)
