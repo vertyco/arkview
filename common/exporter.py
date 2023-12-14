@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime
+from pathlib import Path
 
 import orjson
 
@@ -15,6 +16,8 @@ log = logging.getLogger("arkview.exporter")
 
 async def export():
     global cache
+    if isinstance(cache.map_file, str):
+        cache.map_file = Path(cache.map_file)
     while True:
         map_file_modified = int(cache.map_file.stat().st_mtime)
         if cache.last_export == map_file_modified:

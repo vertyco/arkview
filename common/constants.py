@@ -13,7 +13,6 @@ MapFilePath =
 ClusterFolderPath =
 Debug = False
 DSN =
-DataOnly = False
 """
 
 IS_WINDOWS = True if "C:\\Users" in os.environ.get("USERPROFILE", "") else False
@@ -24,7 +23,11 @@ else:
     ROOT_DIR = Path(os.path.dirname(os.path.abspath(sys.executable))).parent.parent
 OUTPUT_DIR = ROOT_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
-EXE_FILE = ROOT_DIR / "exporter" / "ASVExport.exe"
+EXE_FILE = (
+    Path(os.path.abspath(os.path.dirname(__file__))).parent
+    / "exporter"
+    / "ASVExport.exe"
+)
 CONFIG = ROOT_DIR / "config.ini"
 if not CONFIG.exists():
     CONFIG.write_text(DEFAULT_CONF.strip())
