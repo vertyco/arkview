@@ -5,6 +5,7 @@ import sys
 
 from common.logger import init_logging
 from common.tasks import ArkViewer
+from common.version import VERSION
 
 init_logging()
 
@@ -20,6 +21,7 @@ class Manager:
         self.handler = ArkViewer()
 
     async def start(self) -> None:
+        log.info(f"Version: {VERSION}")
         success = await self.handler.initialize()
         if not success:
             log.warning("Something went wrong during startup!")
