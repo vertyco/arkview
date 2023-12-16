@@ -12,7 +12,7 @@ A client side API plugin for the Arkon bot to view your map data!
 
 # How To Use
 
-### Windows Only
+### Running on Windows
 
 You will need windows with the latest .NET v6.0 framework to run this client
 
@@ -23,12 +23,36 @@ You will need windows with the latest .NET v6.0 framework to run this client
 5. Add that port to the server you have it on with the bot via `[p]avset addport <cluster> <server> <port>`
    1. If you have the client running a different computer from the map, you can use `[p]avset addpi` to add a separate ip for the client
 
-## Running on linux
+## Running on Linux
+
+Installing wine
 
 ```
 sudo dpkg --add-architecture i386
 sudo apt update
 sudo apt install wine64 wine32
+```
+
+Installing dotnet
+
+```bash
+
+wget https://dot.net/v1/dotnet-install.sh
+
+chmod +x dotnet-install.sh
+
+./dotnet-install.sh --channel 6.0 --runtime dotnet
+```
+
+```bash
+~/.bashrc
+
+# Add the following lines to the end of your ~/.bashrc file:
+export DOTNET_ROOT=$HOME/.dotnet
+export PATH=$PATH:$HOME/.dotnet
+
+# To apply the changes without restarting the terminal, you can source the .bashrc file:
+source ~/.bashrc
 ```
 
 # Credits
@@ -46,3 +70,7 @@ If you would like to contribute, please talk to me on Discord first about your i
 # Feature Requests
 
 I am open to ideas or suggestions for new cogs and features!
+
+```
+
+```

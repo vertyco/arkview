@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import os
-import subprocess
+
+# import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -45,7 +46,8 @@ async def export():
             if IS_WINDOWS:
                 os.system(command)
             else:
-                subprocess.run(command, shell=True)
+                os.system(command)
+                # subprocess.run(command, shell=True)
             await asyncio.sleep(5)
             await wait_for_process("ASVExport.exe")
             await asyncio.sleep(5)
