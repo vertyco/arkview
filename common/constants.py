@@ -36,10 +36,10 @@ else:
         / "exporter"
         / "ASVExport.dll"
     )
-    RUNTIME = (
-        ROOT_DIR / "exporter" / "runtimes" / "linux-x64" / "native" / "libe_sqlite3.so"
-    )
-    os.environ["LD_LIBRARY_PATH"] = str(RUNTIME)
+    # RUNTIME = (
+    #     ROOT_DIR / "exporter" / "runtimes" / "linux-x64" / "native" / "libe_sqlite3.so"
+    # )
+    # os.environ["LD_LIBRARY_PATH"] = str(RUNTIME)
 CONFIG = ROOT_DIR / "config.ini"
 if not CONFIG.exists():
     CONFIG.write_text(DEFAULT_CONF.strip())

@@ -61,9 +61,11 @@ class ArkViewer:
             log.info("Using test files")
             if cache.asatest:
                 cache.map_file = (
-                    cache.root_dir / "testdata" / "TheIsland_WP" / "TheIsland_WP.ark"
+                    cache.root_dir / "testdata" / "asamapdata" / "TheIsland_WP.ark"
                 )
-                cache.ban_file = cache.root_dir / "testdata" / "mapdata" / "BanList.txt"
+                cache.ban_file = (
+                    cache.root_dir / "testdata" / "asamapdata" / "BanList.txt"
+                )
             else:
                 cache.map_file = (
                     cache.root_dir / "testdata" / "mapdata" / "Ragnarok.ark"

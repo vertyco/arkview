@@ -53,6 +53,26 @@ chmod +x ArkViewer
 ./ArkViewer
 ```
 
+Samba (For running on windows but syncing with linux)
+
+```bash
+sudo apt update
+sudo apt install samba
+```
+
+`sudo nano /etc/samba/smb.conf`
+
+```conf
+# Scroll to the bottom of the file and add a new share definition. For example:
+[ShareName]
+path = /path/to/your/directory
+browseable = yes
+writable = yes
+guest ok = yes
+create mask = 0777
+directory mask = 0777
+```
+
 # Credits
 
 This plugin wouldn't be possible without miragedmuk's work on his fork of the old Ark savegame parser, lots of love!
@@ -68,6 +88,10 @@ If you would like to contribute, please talk to me on Discord first about your i
 # Feature Requests
 
 I am open to ideas or suggestions for new cogs and features!
+
+```
+
+```
 
 ```
 
