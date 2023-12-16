@@ -18,8 +18,8 @@ DSN =
 IS_WINDOWS = sys.platform.startswith("win")
 IS_EXE = True if (getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")) else False
 if IS_EXE:
-    ROOT_DIR = Path(sys._MEIPASS)
-    # ROOT_DIR = Path(os.path.dirname(os.path.abspath(sys.executable)))
+    # ROOT_DIR = Path(sys._MEIPASS)
+    ROOT_DIR = Path(os.path.dirname(os.path.abspath(sys.executable)))
 else:
     ROOT_DIR = Path(os.path.dirname(os.path.abspath(sys.executable))).parent.parent
 OUTPUT_DIR = ROOT_DIR / "output"
