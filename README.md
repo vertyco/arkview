@@ -25,14 +25,6 @@ You will need windows with the latest .NET v6.0 framework to run this client
 
 ## Running on Linux
 
-Installing wine
-
-```
-sudo dpkg --add-architecture i386
-sudo apt update
-sudo apt install wine64 wine32
-```
-
 Installing dotnet
 
 ```bash
