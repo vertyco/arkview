@@ -29,23 +29,39 @@ async def export():
 
         # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
         if IS_WINDOWS:
-            pre = f"start /LOW /MIN /AFFINITY 0x800 {cache.exe_file} all"
+            command = f'start /LOW /MIN /AFFINITY 0x800 {cache.exe_file} all "{cache.map_file}"'
+            if cdir := cache.cluster_dir:
+                command += f' "{cdir}\\"'
+            command += f' "{cache.output_dir}\\"'
         else:
-            pre = f"taskset -c 0 dotnet {cache.exe_file} all"
+            command = [
+                "taskset",
+                "-c",
+                "0",
+                "dotnet",
+                str(cache.exe_file),
+                "all",
+                f'"{cache.map_file}"',
+            ]
+            if cdir := cache.cluster_dir:
+                command.append(f'"{cdir}/"')
+            command.append(f'"{cache.output_dir}/"')
 
-        sep = "\\" if IS_WINDOWS else "/"
-        ext = f' "{cache.map_file}" "{cache.output_dir}{sep}"'
-        if cache.cluster_dir:
-            ext = f' "{cache.map_file}" "{cache.cluster_dir}{sep}" "{cache.output_dir}{sep}"'
-        command = pre + ext
-        log.debug(command)
+        if cache.debug:
+            log.info(f"Running: {command}")
+        else:
+            log.debug(f"Running: {command}")
 
         try:
             cache.syncing = True
             if IS_WINDOWS:
                 os.system(command)
             else:
-                subprocess.run(command, shell=True)
+                result = subprocess.run(
+                    command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                )
+                log.info(f"STDOUT: {result.stdout}")
+                log.info(f"STDERR: {result.stderr}")
             await asyncio.sleep(5)
             await wait_for_process("ASVExport")
             await asyncio.sleep(5)

@@ -110,6 +110,7 @@ class ArkViewer:
             f"Debug: {cache.debug}\n"
             f"Cores: {os.cpu_count()}\n"
             f"OS: {'Windows' if IS_WINDOWS else 'Linux'}\n"
+            f"LD Lib: {os.environ.get('LD_LIBRARY_PATH')}\n"
         )
         log.info(txt)
         if IS_WINDOWS and not dotnet_installed():
