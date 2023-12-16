@@ -55,6 +55,12 @@ export PATH=$PATH:$HOME/.dotnet
 source ~/.bashrc
 ```
 
+```bash
+chmod +x ArkViewer
+
+./ArkViewer
+```
+
 # Credits
 
 This plugin wouldn't be possible without miragedmuk's work on his fork of the old Ark savegame parser, lots of love!
