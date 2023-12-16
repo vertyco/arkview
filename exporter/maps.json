@@ -1,9 +1,18 @@
 {
   "maps": [
     {
-      "MapName": "The Island",
+      "MapName": "The Island (Evolved)",
       "Filename": "theisland.ark",
       "ImageFile": "map_theisland.png",
+      "LatShift": 50.0,
+      "LatDiv": 8000.0,
+      "LonShift": 50.0,
+      "LonDiv": 8000.0
+    },
+    {
+      "MapName": "The Island (Ascended)",
+      "Filename": "theisland_wp.ark",
+      "ImageFile": "map_theisland_wp.jpg",
       "LatShift": 50.0,
       "LatDiv": 8000.0,
       "LonShift": 50.0,
@@ -170,7 +179,7 @@
         }
       ]
     },
-	{
+    {
       "MapName": "Fjell",
       "Filename": "viking_p.ark",
       "ImageFile": "map_fjordur.png",
@@ -330,7 +339,18 @@
       "LatDiv": 4065.0,
       "LonShift": 50.0,
       "LonDiv": 4065.0
+    },
+    {
+      "MapName": "TaeniaStella The RenewalAlpha",
+      "Filename": "TaeniaStella.ark",
+      "ImageFile": "map_taeniastella.png",
+      "LatShift": 48.9,
+      "LatDiv": 15500.0,
+      "LonShift": 48.9,
+      "LonDiv": 15500.0
     }
+
+
 
   ]
 }
