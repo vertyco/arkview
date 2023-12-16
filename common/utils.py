@@ -46,7 +46,7 @@ def dotnet_installed() -> bool:
     if not is_installed:
         log.critical(".NET V6.0 framework is REQUIRED!")
         if windows:
-            webbrowser.open("https://dotnet.microsoft.com/en-us/download")
+            webbrowser.open("https://dotnet.microsoft.com/en-us/download/dotnet/6.0")
     return is_installed
 
 

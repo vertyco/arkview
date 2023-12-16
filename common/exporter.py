@@ -30,9 +30,11 @@ async def export():
         # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
         if IS_WINDOWS:
             command = f'start /LOW /MIN /AFFINITY 0x800 {cache.exe_file} all "{cache.map_file}"'
+            # command = f'start {cache.exe_file} all "{cache.map_file}"'
             if cdir := cache.cluster_dir:
                 command += f' "{cdir}\\"'
             command += f' "{cache.output_dir}\\"'
+
         else:
             command = [
                 "taskset",
@@ -41,11 +43,11 @@ async def export():
                 "dotnet",
                 str(cache.exe_file),
                 "all",
-                f'"{cache.map_file}"',
+                str(cache.map_file),
             ]
             if cdir := cache.cluster_dir:
-                command.append(f'"{cdir}/"')
-            command.append(f'"{cache.output_dir}/"')
+                command.append(str(cdir) + "/")
+            command.append(str(cache.output_dir) + "/")
 
         if cache.debug:
             log.info(f"Running: {command}")
@@ -58,13 +60,23 @@ async def export():
                 os.system(command)
             else:
                 result = subprocess.run(
-                    command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                    command,
+                    check=True,
+                    text=True,
+                    # shell=True,
+                    capture_output=True,
+                    # stdout=subprocess.PIPE,
+                    # stderr=subprocess.PIPE,
                 )
                 log.info(f"STDOUT: {result.stdout}")
                 log.info(f"STDERR: {result.stderr}")
             await asyncio.sleep(5)
             await wait_for_process("ASVExport")
             await asyncio.sleep(5)
+        except subprocess.CalledProcessError as e:
+            log.error("Export failed", exc_info=e)
+            log.error(f"Standard Output: {e.stdout}")
+            log.error(f"Standard Error: {e.stderr}")
         except Exception as e:
             log.error("Export failed", exc_info=e)
         finally:
