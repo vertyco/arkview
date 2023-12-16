@@ -15,7 +15,7 @@ Debug = False
 DSN =
 """
 
-IS_WINDOWS = True if "C:\\Users" in os.environ.get("USERPROFILE", "") else False
+IS_WINDOWS = sys.platform.startswith("win")
 IS_EXE = True if (getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")) else False
 if IS_EXE:
     ROOT_DIR = Path(os.path.dirname(os.path.abspath(sys.executable)))

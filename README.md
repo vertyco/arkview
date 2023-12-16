@@ -13,7 +13,9 @@ A client side API plugin for the Arkon bot to view your map data!
 # How To Use
 
 ### Windows Only
+
 You will need windows with the latest .NET v6.0 framework to run this client
+
 1. [Get .NET Framework Here](https://dotnet.microsoft.com/en-us/download)
 2. Download the latest client from [Releases](https://github.com/vertyco/arkview/releases)
 3. Run the .exe anywhere you want, it will make a `config.ini` file that you can set your map and cluster path in
@@ -21,7 +23,16 @@ You will need windows with the latest .NET v6.0 framework to run this client
 5. Add that port to the server you have it on with the bot via `[p]avset addport <cluster> <server> <port>`
    1. If you have the client running a different computer from the map, you can use `[p]avset addpi` to add a separate ip for the client
 
+## Running on linux
+
+```
+sudo dpkg --add-architecture i386
+sudo apt update
+sudo apt install wine64 wine32
+```
+
 # Credits
+
 This plugin wouldn't be possible without miragedmuk's work on his fork of the old Ark savegame parser, lots of love!
 https://github.com/miragedmuk/ASV
 
