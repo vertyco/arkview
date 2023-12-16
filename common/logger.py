@@ -38,11 +38,28 @@ class PrettyFormatter(logging.Formatter):
     colorama.init(autoreset=True)
     fmt = "%(asctime)s - %(levelname)s - %(message)s"
     formats = {
-        logging.DEBUG: Fore.LIGHTGREEN_EX + Style.BRIGHT + fmt,
-        logging.INFO: Fore.LIGHTWHITE_EX + Style.BRIGHT + fmt,
-        logging.WARNING: Fore.YELLOW + Style.BRIGHT + fmt,
-        logging.ERROR: Fore.RED + Style.BRIGHT + fmt,
-        logging.CRITICAL: Fore.LIGHTYELLOW_EX + Back.RED + Style.BRIGHT + fmt,
+        logging.DEBUG: Fore.LIGHTGREEN_EX
+        + Style.BRIGHT
+        + fmt
+        + Style.RESET_ALL
+        + Fore.RESET,
+        logging.INFO: Fore.LIGHTWHITE_EX
+        + Style.BRIGHT
+        + fmt
+        + Style.RESET_ALL
+        + Fore.RESET,
+        logging.WARNING: Fore.YELLOW
+        + Style.BRIGHT
+        + fmt
+        + Style.RESET_ALL
+        + Fore.RESET,
+        logging.ERROR: Fore.RED + Style.BRIGHT + fmt + Style.RESET_ALL + Fore.RESET,
+        logging.CRITICAL: Fore.LIGHTYELLOW_EX
+        + Back.RED
+        + Style.BRIGHT
+        + fmt
+        + Style.RESET_ALL
+        + Fore.RESET,
     }
 
     def format(self, record):
