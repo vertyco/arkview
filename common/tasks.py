@@ -40,7 +40,8 @@ class ArkViewer:
         global cache
         parser.read(str(cache.config))
         settings = parser["Settings"]
-        log.info(f"Parsed settings: {settings.items()}")
+        parsed = [f"{k}: {v}\n" for k, v in settings.items()]
+        log.info(f"Parsed settings\n{''.join(parsed)}")
 
         cache.debug = settings.getboolean("Debug", fallback=False)
         cache.port = settings.getint("Port", fallback=8000)
