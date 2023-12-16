@@ -14,12 +14,14 @@ log = logging.getLogger("arkview.common.utils")
 async def wait_for_process(process: str):
     def _is_running():
         try:
-            return process in [p.name() for p in psutil.process_iter()]
+            running = [p.name() for p in psutil.process_iter()]
+            return any(process in procname for procname in running)
         except psutil.NoSuchProcess:
             return True
 
     while await asyncio.to_thread(_is_running):
-        await asyncio.sleep(1)
+        log.debug("Waiting for ASV to export")
+        await asyncio.sleep(5)
 
 
 def dotnet_installed() -> bool:
