@@ -28,6 +28,8 @@ class Cache(BaseModel):
     cluster_dir: str | Path = ""
     ban_file: str | Path = ""
 
+    startup: bool = True
+
 
 cache = Cache(
     config=CONFIG,

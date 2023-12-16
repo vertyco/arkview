@@ -20,9 +20,10 @@ async def export():
         cache.map_file = Path(cache.map_file)
     while True:
         map_file_modified = int(cache.map_file.stat().st_mtime)
-        if cache.last_export == map_file_modified:
+        if cache.last_export == map_file_modified and not cache.startup:
             await asyncio.sleep(2)
             continue
+        cache.startup = False
         # Run exporter
         cache.last_export = map_file_modified
 
@@ -37,6 +38,7 @@ async def export():
         if cache.cluster_dir:
             ext = f' "{cache.map_file}" "{cache.cluster_dir}{sep}" "{cache.output_dir}{sep}"'
         command = pre + ext
+        log.debug(command)
 
         try:
             cache.syncing = True
