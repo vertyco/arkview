@@ -23,11 +23,18 @@ else:
     ROOT_DIR = Path(os.path.dirname(os.path.abspath(sys.executable))).parent.parent
 OUTPUT_DIR = ROOT_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
-EXE_FILE = (
-    Path(os.path.abspath(os.path.dirname(__file__))).parent
-    / "exporter"
-    / "ASVExport.exe"
-)
+if IS_WINDOWS:
+    EXE_FILE = (
+        Path(os.path.abspath(os.path.dirname(__file__))).parent
+        / "exporter"
+        / "ASVExport.exe"
+    )
+else:
+    EXE_FILE = (
+        Path(os.path.abspath(os.path.dirname(__file__))).parent
+        / "exporter"
+        / "ASVExport.dll"
+    )
 CONFIG = ROOT_DIR / "config.ini"
 if not CONFIG.exists():
     CONFIG.write_text(DEFAULT_CONF.strip())
