@@ -12,7 +12,7 @@ from fastapi_utils.cbv import cbv
 from fastapi_utils.inferring_router import InferringRouter
 from uvicorn import Config, Server
 
-from common.constants import API_CONF, IS_EXE, IS_WINDOWS, VALID_DATATYPES
+from common.constants import API_CONF, DEFAULT_CONF, IS_EXE, IS_WINDOWS, VALID_DATATYPES
 from common.exporter import export, load_outputs
 from common.logger import init_sentry
 from common.models import Banlist, cache  # noqa
@@ -38,6 +38,12 @@ class ArkViewer:
 
     async def initialize(self) -> bool:
         global cache
+        if not cache.config.exists():
+            log.warning("No config file exists! Creating one...")
+            cache.config.write_text(DEFAULT_CONF)
+            return False
+
+        log.info(f"Reading from {cache.config}")
         parser.read(str(cache.config))
         settings = parser["Settings"]
         parsed = [f"{k}: {v}\n" for k, v in settings.items()]
