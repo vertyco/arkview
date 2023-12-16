@@ -50,6 +50,7 @@ class ArkViewer:
         log.info(f"Parsed settings\n{''.join(parsed)}")
 
         cache.debug = settings.getboolean("Debug", fallback=False)
+        cache.asatest = settings.getboolean("ASATest", fallback=True)
         cache.port = settings.getint("Port", fallback=8000)
 
         cache.api_key = settings.get("APIKey", fallback="").replace('"', "")
@@ -58,9 +59,17 @@ class ArkViewer:
 
         if cache.debug and not IS_EXE:
             log.info("Using test files")
-            cache.map_file = cache.root_dir / "testdata" / "mapdata" / "Ragnarok.ark"
-            cache.cluster_dir = cache.root_dir / "testdata" / "clusterdata"
-            cache.ban_file = cache.root_dir / "testdata" / "mapdata" / "BanList.txt"
+            if cache.asatest:
+                cache.map_file = (
+                    cache.root_dir / "testdata" / "TheIsland_WP" / "TheIsland_WP.ark"
+                )
+                cache.ban_file = cache.root_dir / "testdata" / "mapdata" / "BanList.txt"
+            else:
+                cache.map_file = (
+                    cache.root_dir / "testdata" / "mapdata" / "Ragnarok.ark"
+                )
+                cache.cluster_dir = cache.root_dir / "testdata" / "clusterdata"
+                cache.ban_file = cache.root_dir / "testdata" / "mapdata" / "BanList.txt"
         else:
             if dsn := settings.get("DSN", fallback="").replace('"', ""):
                 log.info("Initializing Sentry")
@@ -95,7 +104,7 @@ class ArkViewer:
             cache.ban_file = settings.get("BanListFile", fallback="").replace('"', "")
             if cache.ban_file and not Path(cache.ban_file).exists():
                 log.warning("Banlist file does not exist, creating a new one!")
-                return False
+                Path(cache.ban_file).write_text("")
             elif cache.ban_file and not cache.ban_file.lower().endswith(".txt"):
                 log.warning("Invalid Banlist file!")
                 return False
