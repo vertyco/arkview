@@ -41,7 +41,7 @@ class PrettyFormatter(logging.Formatter):
         logging.DEBUG: Fore.LIGHTGREEN_EX + Style.BRIGHT + fmt,
         logging.INFO: Fore.LIGHTWHITE_EX + Style.BRIGHT + fmt,
         logging.WARNING: Fore.YELLOW + Style.BRIGHT + fmt,
-        logging.ERROR: Fore.LIGHTMAGENTA_EX + Style.BRIGHT + fmt,
+        logging.ERROR: Fore.RED + Style.BRIGHT + fmt,
         logging.CRITICAL: Fore.LIGHTYELLOW_EX + Back.RED + Style.BRIGHT + fmt,
     }
 

@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 
+from common.constants import IS_WINDOWS
 from common.logger import init_logging
 from common.tasks import ArkViewer
 from common.version import VERSION
@@ -24,14 +25,14 @@ class Manager:
         log.info(f"Version: {VERSION}")
         success = await self.handler.initialize()
         if not success:
-            log.warning("Something went wrong during startup!")
+            log.critical("Something went wrong during startup!")
             self.loop.stop()
 
     @classmethod
     def run(cls) -> None:
         log.info(f"Starting ArkViewer with PID {os.getpid()}")
 
-        loop = asyncio.ProactorEventLoop()
+        loop = asyncio.ProactorEventLoop() if IS_WINDOWS else asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         arkview = cls(loop)
 
