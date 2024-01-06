@@ -19,76 +19,93 @@ async def export():
     if isinstance(cache.map_file, str):
         cache.map_file = Path(cache.map_file)
     while True:
-        map_file_modified = int(cache.map_file.stat().st_mtime)
-        if cache.last_export == map_file_modified and not cache.startup:
-            await asyncio.sleep(2)
-            continue
-        cache.startup = False
-        # Run exporter
-        cache.last_export = map_file_modified
+        try:
+            await process_export()
+        except Exception as e:
+            log.error("Export failed", exc_info=e)
 
-        # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
+
+async def process_export():
+    global cache
+    now = datetime.now().timestamp()
+    map_file_modified = cache.map_file.stat().st_mtime
+
+    if cache.last_export:
+        # Run a couple checks to see if we don't need to export
+        delta = now - cache.last_export
+        if cache.last_export >= map_file_modified and delta < 1800:
+            # If the map file hasn't been modified and it's been less than 30 minutes, don't export
+            await asyncio.sleep(5)
+            return
+
+    cache.startup = False
+    # Run exporter
+    cache.last_export = map_file_modified
+
+    # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
+    if IS_WINDOWS:
+        command = (
+            f'start /LOW /MIN /AFFINITY 0x800 {cache.exe_file} all "{cache.map_file}"'
+        )
+        # command = f'start {cache.exe_file} all "{cache.map_file}"'
+        if cdir := cache.cluster_dir:
+            command += f' "{cdir}\\"'
+        command += f' "{cache.output_dir}\\"'
+
+    else:
+        command = [
+            "taskset",
+            "-c",
+            "0",
+            "dotnet",
+            str(cache.exe_file),
+            "all",
+            str(cache.map_file),
+        ]
+        if cdir := cache.cluster_dir:
+            command.append(str(cdir) + "/")
+        command.append(str(cache.output_dir) + "/")
+
+    if cache.debug:
+        log.info(f"Running: {command}")
+    else:
+        log.debug(f"Running: {command}")
+
+    try:
+        cache.syncing = True
         if IS_WINDOWS:
-            command = f'start /LOW /MIN /AFFINITY 0x800 {cache.exe_file} all "{cache.map_file}"'
-            # command = f'start {cache.exe_file} all "{cache.map_file}"'
-            if cdir := cache.cluster_dir:
-                command += f' "{cdir}\\"'
-            command += f' "{cache.output_dir}\\"'
-
+            os.system(command)
         else:
-            command = [
-                "taskset",
-                "-c",
-                "0",
-                "dotnet",
-                str(cache.exe_file),
-                "all",
-                str(cache.map_file),
-            ]
-            if cdir := cache.cluster_dir:
-                command.append(str(cdir) + "/")
-            command.append(str(cache.output_dir) + "/")
+            result = subprocess.run(
+                command,
+                check=True,
+                text=True,
+                # shell=True,
+                capture_output=True,
+                # stdout=subprocess.PIPE,
+                # stderr=subprocess.PIPE,
+            )
+            log.info(f"STDOUT: {result.stdout}")
+            log.info(f"STDERR: {result.stderr}")
+        await asyncio.sleep(5)
+        await wait_for_process("ASVExport")
+        await asyncio.sleep(5)
+    except subprocess.CalledProcessError as e:
+        log.error("Export failed", exc_info=e)
+        log.error(f"Standard Output: {e.stdout}")
+        log.error(f"Standard Error: {e.stderr}")
+    except Exception as e:
+        log.error("Export failed", exc_info=e)
+    finally:
+        cache.syncing = False
 
-        if cache.debug:
-            log.info(f"Running: {command}")
-        else:
-            log.debug(f"Running: {command}")
-
-        try:
-            cache.syncing = True
-            if IS_WINDOWS:
-                os.system(command)
-            else:
-                result = subprocess.run(
-                    command,
-                    check=True,
-                    text=True,
-                    # shell=True,
-                    capture_output=True,
-                    # stdout=subprocess.PIPE,
-                    # stderr=subprocess.PIPE,
-                )
-                log.info(f"STDOUT: {result.stdout}")
-                log.info(f"STDERR: {result.stderr}")
-            await asyncio.sleep(5)
-            await wait_for_process("ASVExport")
-            await asyncio.sleep(5)
-        except subprocess.CalledProcessError as e:
-            log.error("Export failed", exc_info=e)
-            log.error(f"Standard Output: {e.stdout}")
-            log.error(f"Standard Error: {e.stderr}")
-        except Exception as e:
-            log.error("Export failed", exc_info=e)
-        finally:
-            cache.syncing = False
-
-        try:
-            cache.reading = True
-            await load_outputs()
-        except Exception as e:
-            log.error("Failed to load outputs", exc_info=e)
-        finally:
-            cache.reading = False
+    try:
+        cache.reading = True
+        await load_outputs()
+    except Exception as e:
+        log.error("Failed to load outputs", exc_info=e)
+    finally:
+        cache.reading = False
 
 
 async def load_outputs(target: str = ""):
