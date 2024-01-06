@@ -28,6 +28,18 @@ class Manager:
             log.critical("Something went wrong during startup!")
             self.loop.stop()
 
+    async def shutdown(self) -> None:
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        [task.cancel() for task in tasks]
+
+        log.info("Cancelling outstanding tasks")
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        log.info("Shutting down asyncgens...")
+        await self.loop.shutdown_asyncgens()
+        await asyncio.sleep(1)
+        self.loop.stop()
+
     @classmethod
     def run(cls) -> None:
         log.info(f"Starting ArkViewer with PID {os.getpid()}")
@@ -41,15 +53,19 @@ class Manager:
             loop.run_forever()
         except KeyboardInterrupt:
             print("CTRL+C received, shutting down...")
+            loop.run_until_complete(arkview.shutdown())
         except Exception as e:
             log.critical("Fatal error!", exc_info=e)
+            loop.run_until_complete(arkview.shutdown())
         finally:
             log.info("Shutting down...")
-            loop.run_until_complete(loop.shutdown_asyncgens())
-            loop.run_until_complete(asyncio.sleep(1))
-            asyncio.set_event_loop(None)
-            loop.stop()
-            loop.close()
+            if not loop.is_closed():
+                loop.close()
+
+            # loop.run_until_complete(loop.shutdown_asyncgens())
+            # loop.run_until_complete(asyncio.sleep(1))
+            # asyncio.set_event_loop(None)
+            # loop.stop()
 
             log.info("Goodbye.")
             sys.exit()
