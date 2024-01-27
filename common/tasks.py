@@ -50,7 +50,7 @@ class ArkViewer:
         log.info(f"Parsed settings\n{''.join(parsed)}")
 
         cache.debug = settings.getboolean("Debug", fallback=False)
-        cache.asatest = settings.getboolean("ASATest", fallback=True)
+        cache.asatest = settings.getboolean("ASATest", fallback=False)
         cache.port = settings.getint("Port", fallback=8000)
 
         cache.api_key = settings.get("APIKey", fallback="").replace('"', "")
@@ -58,8 +58,8 @@ class ArkViewer:
             log.warning("API key is not set! Running with reduced security!")
 
         if cache.debug and not IS_EXE:
-            log.info("Using test files")
             if cache.asatest:
+                log.info("Using test files (ASA)")
                 cache.map_file = (
                     cache.root_dir / "testdata" / "asamapdata" / "TheIsland_WP.ark"
                 )
@@ -67,6 +67,7 @@ class ArkViewer:
                     cache.root_dir / "testdata" / "asamapdata" / "BanList.txt"
                 )
             else:
+                log.info("Using test files (ASE)")
                 cache.map_file = (
                     cache.root_dir / "testdata" / "mapdata" / "Ragnarok.ark"
                 )
@@ -124,8 +125,11 @@ class ArkViewer:
             f"LD Lib: {os.environ.get('LD_LIBRARY_PATH')}\n"
         )
         log.info(txt)
-        if IS_WINDOWS and not dotnet_installed():
-            return
+        try:
+            if IS_WINDOWS and not dotnet_installed():
+                return
+        except FileNotFoundError:
+            log.error("Failed to check .NET version!")
 
         asyncio.create_task(self.server(), name="arkview_server")
         asyncio.create_task(export(), name="arkview_export")

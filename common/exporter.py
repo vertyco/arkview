@@ -28,6 +28,9 @@ async def export():
 async def process_export():
     global cache
     now = datetime.now().timestamp()
+    if not cache.map_file.exists():
+        return
+
     map_file_modified = cache.map_file.stat().st_mtime
 
     if cache.last_export:
