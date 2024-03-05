@@ -14,7 +14,7 @@ from fastapi_utils.inferring_router import InferringRouter
 from uvicorn import Config, Server
 
 from common.constants import API_CONF, DEFAULT_CONF, IS_EXE, IS_WINDOWS, VALID_DATATYPES
-from common.exporter import load_outputs, process_export
+from common.exporter import export_loop, load_outputs, process_export
 from common.logger import init_sentry
 from common.models import Banlist, cache  # noqa
 from common.scheduler import scheduler
@@ -124,6 +124,7 @@ class ArkViewer:
         log.info(txt)
         try:
             if IS_WINDOWS and not dotnet_installed():
+                log.info("Dotnet not installed!")
                 return False
         except FileNotFoundError:
             log.error("Failed to check .NET version!")
@@ -138,14 +139,17 @@ class ArkViewer:
             log.error("Exporter does not exist!")
             return False
 
-        scheduler.add_job(
-            process_export,
-            trigger="interval",
-            seconds=5,
-            next_run_time=datetime.now() + timedelta(seconds=5),
-            id="Handler.exporter",
-            max_instances=1,
-        )
+        if IS_WINDOWS:
+            scheduler.add_job(
+                process_export,
+                trigger="interval",
+                seconds=5,
+                next_run_time=datetime.now() + timedelta(seconds=5),
+                id="Handler.exporter",
+                max_instances=1,
+            )
+        else:
+            asyncio.create_task(export_loop(), name="export_loop")
 
         asyncio.create_task(self.server(), name="arkview_server")
         asyncio.create_task(load_outputs(), name="load_outputs")

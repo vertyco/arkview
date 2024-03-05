@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime
+from pathlib import Path
 
 import orjson
 
@@ -11,6 +12,19 @@ from common.models import cache  # noqa
 from common.utils import wait_for_process
 
 log = logging.getLogger("arkview.exporter")
+
+
+async def export_loop():
+    global cache
+    if isinstance(cache.map_file, str):
+        cache.map_file = Path(cache.map_file)
+    while True:
+        try:
+            await process_export()
+            await asyncio.sleep(5)
+        except Exception as e:
+            log.error("Export failed", exc_info=e)
+            await asyncio.sleep(15)
 
 
 async def process_export():
