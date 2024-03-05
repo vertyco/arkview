@@ -15,7 +15,7 @@ Debug = False
 DSN =
 """
 
-IS_WINDOWS = sys.platform.startswith("win")
+IS_WINDOWS: bool = sys.platform.startswith("win")
 IS_EXE = True if (getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")) else False
 if IS_EXE:
     ROOT_DIR = Path(os.path.dirname(os.path.abspath(sys.executable)))
@@ -23,23 +23,10 @@ else:
     ROOT_DIR = Path(os.path.dirname(os.path.abspath(sys.executable))).parent.parent
 OUTPUT_DIR = ROOT_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
-if IS_WINDOWS:
-    EXE_FILE = (
-        Path(os.path.abspath(os.path.dirname(__file__))).parent
-        / "exporter"
-        / "ASVExport.exe"
-    )
-
-else:
-    EXE_FILE = (
-        Path(os.path.abspath(os.path.dirname(__file__))).parent
-        / "exporter"
-        / "ASVExport.dll"
-    )
-    # RUNTIME = (
-    #     ROOT_DIR / "exporter" / "runtimes" / "linux-x64" / "native" / "libe_sqlite3.so"
-    # )
-    # os.environ["LD_LIBRARY_PATH"] = str(RUNTIME)
+FILE_NAME = "ASVExport.exe" if IS_WINDOWS else "ASVExport.dll"
+EXE_FILE = (
+    Path(os.path.abspath(os.path.dirname(__file__))).parent / "exporter" / FILE_NAME
+)
 CONFIG = ROOT_DIR / "config.ini"
 if not CONFIG.exists():
     CONFIG.write_text(DEFAULT_CONF.strip())

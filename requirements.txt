@@ -1,3 +1,4 @@
+apscheduler
 uvicorn
 fastapi
 fastapi-utils
