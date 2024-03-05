@@ -5,6 +5,7 @@ import sys
 
 from common.constants import IS_WINDOWS
 from common.logger import init_logging
+from common.scheduler import scheduler
 from common.tasks import ArkViewer
 from common.version import VERSION
 
@@ -23,12 +24,17 @@ class Manager:
 
     async def start(self) -> None:
         log.info(f"Version: {VERSION}")
+        scheduler.start()
+        scheduler.remove_all_jobs()
         success = await self.handler.initialize()
         if not success:
             log.critical("Something went wrong during startup!")
             self.loop.stop()
 
     async def shutdown(self) -> None:
+        scheduler.remove_all_jobs()
+        scheduler.shutdown(wait=False)
+
         tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
         [task.cancel() for task in tasks]
 
@@ -53,22 +59,20 @@ class Manager:
             loop.run_forever()
         except KeyboardInterrupt:
             print("CTRL+C received, shutting down...")
-            loop.run_until_complete(arkview.shutdown())
         except Exception as e:
             log.critical("Fatal error!", exc_info=e)
-            loop.run_until_complete(arkview.shutdown())
         finally:
             log.info("Shutting down...")
             if not loop.is_closed():
+                loop.run_until_complete(arkview.shutdown())
+                loop.run_until_complete(loop.shutdown_asyncgens())
+                loop.run_until_complete(asyncio.sleep(1))
+                asyncio.set_event_loop(None)
+                loop.stop()
                 loop.close()
 
-            # loop.run_until_complete(loop.shutdown_asyncgens())
-            # loop.run_until_complete(asyncio.sleep(1))
-            # asyncio.set_event_loop(None)
-            # loop.stop()
-
-            log.info("Goodbye.")
-            sys.exit()
+                log.info("Goodbye.")
+                sys.exit()
 
 
 if __name__ == "__main__":

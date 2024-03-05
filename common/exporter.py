@@ -3,7 +3,6 @@ import logging
 import os
 import subprocess
 from datetime import datetime
-from pathlib import Path
 
 import orjson
 
@@ -14,22 +13,16 @@ from common.utils import wait_for_process
 log = logging.getLogger("arkview.exporter")
 
 
-async def export():
-    global cache
-    if isinstance(cache.map_file, str):
-        cache.map_file = Path(cache.map_file)
-    while True:
-        try:
-            await process_export()
-        except Exception as e:
-            log.error("Export failed", exc_info=e)
-
-
 async def process_export():
     global cache
     now = datetime.now().timestamp()
     if not cache.map_file.exists():
         return
+    if not cache.exe_file.exists():
+        return
+    if cache.cluster_dir and not cache.cluster_dir.exists():
+        return
+    cache.output_dir.mkdir(exist_ok=True)
 
     map_file_modified = cache.map_file.stat().st_mtime
 
@@ -41,20 +34,29 @@ async def process_export():
             await asyncio.sleep(5)
             return
 
-    cache.startup = False
     # Run exporter
     cache.last_export = map_file_modified
 
     # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
     if IS_WINDOWS:
-        command = (
-            f'start /LOW /MIN /AFFINITY 0x800 {cache.exe_file} all "{cache.map_file}"'
-        )
-        # command = f'start {cache.exe_file} all "{cache.map_file}"'
-        if cdir := cache.cluster_dir:
-            command += f' "{cdir}\\"'
-        command += f' "{cache.output_dir}\\"'
+        # command = f'start /LOW /MIN /AFFINITY 0x800 {cache.exe_file} all "{cache.map_file}"'
+        # if cdir := cache.cluster_dir:
+        #     command += f' "{cdir}\\"'
+        # command += f' "{cache.output_dir}\\"'
 
+        command = [
+            "start",
+            "/LOW",
+            "/MIN",
+            "/AFFINITY",
+            "0x800",
+            str(cache.exe_file),
+            "all",
+            f'"{cache.map_file}"',
+        ]
+        if cdir := cache.cluster_dir:
+            command.append(f'"{cdir}\\"')
+        command.append(f'"{cache.output_dir}\\"')
     else:
         command = [
             "taskset",
@@ -77,7 +79,7 @@ async def process_export():
     try:
         cache.syncing = True
         if IS_WINDOWS:
-            os.system(command)
+            os.system(" ".join(command))
         else:
             result = subprocess.run(
                 command,
@@ -88,8 +90,10 @@ async def process_export():
                 # stdout=subprocess.PIPE,
                 # stderr=subprocess.PIPE,
             )
-            log.info(f"STDOUT: {result.stdout}")
-            log.info(f"STDERR: {result.stderr}")
+            if stdout := result.stdout:
+                log.info(stdout)
+            if stderr := result.stderr:
+                log.info(stderr)
         await asyncio.sleep(5)
         await wait_for_process("ASVExport")
         await asyncio.sleep(5)
@@ -118,7 +122,6 @@ async def load_outputs(target: str = ""):
         if target and target.lower() != key:
             continue
 
-        # last_modified = int(export_file.stat().st_mtime)
         tries = 0
         data = None
 

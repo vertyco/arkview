@@ -4,6 +4,7 @@ import logging
 import multiprocessing
 import os
 from configparser import ConfigParser
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -13,9 +14,10 @@ from fastapi_utils.inferring_router import InferringRouter
 from uvicorn import Config, Server
 
 from common.constants import API_CONF, DEFAULT_CONF, IS_EXE, IS_WINDOWS, VALID_DATATYPES
-from common.exporter import export, load_outputs
+from common.exporter import load_outputs, process_export
 from common.logger import init_sentry
 from common.models import Banlist, cache  # noqa
+from common.scheduler import scheduler
 from common.statusbar import status_bar
 from common.utils import dotnet_installed, format_sys_info
 from common.version import VERSION
@@ -58,21 +60,16 @@ class ArkViewer:
             log.warning("API key is not set! Running with reduced security!")
 
         if cache.debug and not IS_EXE:
+            testdata = cache.root_dir / "testdata"
             if cache.asatest:
                 log.info("Using test files (ASA)")
-                cache.map_file = (
-                    cache.root_dir / "testdata" / "asamapdata" / "TheIsland_WP.ark"
-                )
-                cache.ban_file = (
-                    cache.root_dir / "testdata" / "asamapdata" / "BanList.txt"
-                )
+                cache.map_file = testdata / "asamapdata" / "TheIsland_WP.ark"
+                cache.ban_file = testdata / "asamapdata" / "BanList.txt"
             else:
                 log.info("Using test files (ASE)")
-                cache.map_file = (
-                    cache.root_dir / "testdata" / "mapdata" / "Ragnarok.ark"
-                )
-                cache.cluster_dir = cache.root_dir / "testdata" / "clusterdata"
-                cache.ban_file = cache.root_dir / "testdata" / "mapdata" / "BanList.txt"
+                cache.map_file = testdata / "mapdata" / "Ragnarok.ark"
+                cache.cluster_dir = testdata / "clusterdata"
+                cache.ban_file = testdata / "mapdata" / "BanList.txt"
         else:
             if dsn := settings.get("DSN", fallback="").replace('"', ""):
                 log.info("Initializing Sentry")
@@ -127,12 +124,30 @@ class ArkViewer:
         log.info(txt)
         try:
             if IS_WINDOWS and not dotnet_installed():
-                return
+                return False
         except FileNotFoundError:
             log.error("Failed to check .NET version!")
 
+        if not cache.map_file.exists():
+            log.error("Map file does not exist!")
+            return False
+        if cache.cluster_dir and not cache.cluster_dir.exists():
+            log.error("Cluster dir does not exist!")
+            return False
+        if not cache.exe_file.exists():
+            log.error("Exporter does not exist!")
+            return False
+
+        scheduler.add_job(
+            process_export,
+            trigger="interval",
+            seconds=5,
+            next_run_time=datetime.now() + timedelta(seconds=5),
+            id="Handler.exporter",
+            max_instances=1,
+        )
+
         asyncio.create_task(self.server(), name="arkview_server")
-        asyncio.create_task(export(), name="arkview_export")
         asyncio.create_task(load_outputs(), name="load_outputs")
         if IS_WINDOWS and IS_EXE:
             asyncio.create_task(status_bar(), name="status_bar")
