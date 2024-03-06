@@ -22,7 +22,7 @@ You will need windows with the latest .NET v6.0 framework to run this client
 3. Run the .exe anywhere you want, it will make a `config.ini` file that you can set your map and cluster path in
 4. Set the port you want the client to listen on and forward it in your router
 
-# Running on Linux
+# Running on Linux (ASE ONLY)
 
 This assumes you have a basic understanding of Linux and how to use the terminal.
 Support for running on Linux is experimental and may not work as expected. As such I cannot provide support for this method.
