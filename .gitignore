@@ -132,6 +132,3 @@ output/
 testdata/
 tests/
 releases/
-
-# Other
-config.ini
