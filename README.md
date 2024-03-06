@@ -54,7 +54,8 @@ cd arkview
 pip install -r requirements.txt
 
 # Edit the config.ini file to your liking
-sudo nano config.ini
+cp default_config.ini config.ini
+sudo nano config.ini  # Save and exit with ctrl + O; enter; ctrl + X
 
 # Run the client
 python3.11 main.py
