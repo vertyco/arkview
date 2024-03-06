@@ -95,6 +95,10 @@ async def process_export():
         if IS_WINDOWS:
             os.system(" ".join(command))
         else:
+            # Ensure all the paths have r/w and execute permissions
+            cache.exe_file.chmod(0o777)
+            cache.map_file.chmod(0o777)
+            cache.output_dir.chmod(0o777)
             result = subprocess.run(
                 command,
                 check=True,
