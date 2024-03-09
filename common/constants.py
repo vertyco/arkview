@@ -17,17 +17,20 @@ DSN =
 
 IS_WINDOWS: bool = sys.platform.startswith("win")
 IS_EXE = True if (getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")) else False
-if IS_EXE or IS_WINDOWS:
+if IS_EXE and IS_WINDOWS:
     ROOT_DIR = Path(os.path.dirname(os.path.abspath(sys.executable)))
 else:
     ROOT_DIR = Path(os.path.dirname(os.path.abspath(__file__))).parent
+
+META_PATH = Path(os.path.abspath(os.path.dirname(__file__))).parent
+
 OUTPUT_DIR = ROOT_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 FILE_NAME = "ASVExport.exe" if IS_WINDOWS else "ASVExport.dll"
 EXE_FILE = (
     Path(os.path.abspath(os.path.dirname(__file__))).parent / "exporter" / FILE_NAME
 )
-CONFIG = ROOT_DIR / "config.ini"
+CONFIG = META_PATH / "config.ini"
 if not CONFIG.exists():
     CONFIG.write_text(DEFAULT_CONF.strip())
 
