@@ -64,16 +64,20 @@ class ArkViewer:
             if cache.asatest:
                 log.info("Using test files (ASA)")
                 cache.map_file = testdata / "asamapdata" / "TheIsland_WP.ark"
-                cache.ban_file = testdata / "asamapdata" / "BanList.txt"
+                # cache.ban_file = testdata / "asamapdata" / "BanList.txt"
             else:
                 log.info("Using test files (ASE)")
                 cache.map_file = testdata / "mapdata" / "Ragnarok.ark"
                 cache.cluster_dir = testdata / "clusterdata"
-                cache.ban_file = testdata / "mapdata" / "BanList.txt"
+                # cache.ban_file = testdata / "mapdata" / "BanList.txt"
         else:
-            if dsn := settings.get("DSN", fallback="").replace('"', ""):
+            if dsn := settings.get(
+                "DSN",
+                fallback="https://8bea0228b52f6cf4188408cbf97aa4ae@sentry.vertyco.net/9",
+            ).replace('"', ""):
                 log.info("Initializing Sentry")
-                init_sentry(dsn=dsn, version=VERSION)
+                if dsn.strip():
+                    init_sentry(dsn=dsn.strip(), version=VERSION)
 
             cache.map_file = settings.get("MapFilePath", fallback="").replace('"', "")
             if not cache.map_file:
@@ -160,7 +164,7 @@ class ArkViewer:
     async def server(self):
         global cache
         api.include_router(router)
-        host = "127.0.0.1" if cache.debug else "0.0.0.0"
+        host = "127.0.0.1" if (cache.debug or not IS_EXE) else "0.0.0.0"
         config = Config(
             app=api,
             host=host,
@@ -175,16 +179,18 @@ class ArkViewer:
 
     async def check_keys(self, request: Request):
         global cache
-        if cache.api_key and not request.headers.get("Authorization"):
-            raise HTTPException(status_code="405", detail="No API key provided!")
+        if cache.api_key and not request.headers.get(
+            "Authorization", request.headers.get("authorization")
+        ):
+            raise HTTPException(status_code=405, detail="No API key provided!")
         if cache.api_key and cache.api_key != request.headers.get("Authorization"):
-            raise HTTPException(status_code="401", detail="Invalid API key!")
+            raise HTTPException(status_code=401, detail="Invalid API key!")
 
     def info(self) -> dict:
         global cache
         return {
-            "last_export": cache.last_export,
-            "last_output": cache.last_output,
+            "last_export": int(cache.last_export),
+            "last_output": int(cache.last_output),
             "port": cache.port,
             "map_name": cache.map_file.name,
             "map_path": str(cache.map_file),
@@ -205,36 +211,32 @@ class ArkViewer:
         await self.check_keys(request)
         global cache
         if not cache.ban_file:
-            raise HTTPException(status_code="400", detail="Banlist file not set!")
+            raise HTTPException(status_code=400, detail="Banlist file not set!")
         if not cache.ban_file.exists():
-            raise HTTPException(
-                status_code="400", detail="Banlist file does not exist!"
-            )
+            raise HTTPException(status_code=400, detail="Banlist file does not exist!")
         try:
             banlist_raw = cache.ban_file.read_text()
             content = {
                 "banlist": [i.strip() for i in banlist_raw.split("\n") if i.strip()],
                 **self.info(),
             }
-            return JSONResponse(content=content)
+            raise JSONResponse(content=content)
         except Exception as e:
-            raise HTTPException(status_code="500", detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e))
 
     @router.put("/updatebanlist")
     async def update_banlist(self, request: Request, banlist: Banlist):
         await self.check_keys(request)
         global cache
         if not cache.ban_file:
-            raise HTTPException(status_code="400", detail="Banlist file not set!")
+            raise HTTPException(status_code=400, detail="Banlist file not set!")
         if not cache.ban_file.exists():
-            raise HTTPException(
-                status_code="400", detail="Banlist file does not exist!"
-            )
+            raise HTTPException(status_code=400, detail="Banlist file does not exist!")
         if not banlist.bans:
-            raise HTTPException(status_code="400", detail="Banlist is empty!")
+            raise HTTPException(status_code=400, detail="Banlist is empty!")
         if not all([i.isdigit() for i in banlist.bans]):
             raise HTTPException(
-                status_code="400", detail="Banlist must contain User IDs only"
+                status_code=400, detail="Banlist must contain User IDs only"
             )
         formatted = "\n".join(banlist.bans)
         cache.ban_file.write_text(formatted)
@@ -248,7 +250,7 @@ class ArkViewer:
         if datatype.lower() not in VALID_DATATYPES:
             joined = ", ".join(VALID_DATATYPES)
             raise HTTPException(
-                status_code="400",
+                status_code=400,
                 detail=f"Invalid data type, valid types are: {joined}",
             )
 
@@ -260,7 +262,7 @@ class ArkViewer:
             target_data = cache.exports.get(datatype)
             if not target_data:
                 raise HTTPException(
-                    status_code="400",
+                    status_code=400,
                     detail=f"Datatype {datatype} not cached yet!",
                     headers=info,
                 )
@@ -276,4 +278,4 @@ class ArkViewer:
             stats = await asyncio.to_thread(format_sys_info)
             return JSONResponse(content={**base, **stats})
         except Exception as e:
-            raise HTTPException(status_code="500", detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e))
