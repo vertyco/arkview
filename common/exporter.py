@@ -53,11 +53,6 @@ async def process_export():
 
     # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
     if IS_WINDOWS:
-        # command = f'start /LOW /MIN /AFFINITY 0x800 {cache.exe_file} all "{cache.map_file}"'
-        # if cdir := cache.cluster_dir:
-        #     command += f' "{cdir}\\"'
-        # command += f' "{cache.output_dir}\\"'
-
         command = [
             "start",
             "/LOW",

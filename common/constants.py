@@ -30,7 +30,8 @@ FILE_NAME = "ASVExport.exe" if IS_WINDOWS else "ASVExport.dll"
 EXE_FILE = (
     Path(os.path.abspath(os.path.dirname(__file__))).parent / "exporter" / FILE_NAME
 )
-CONFIG = META_PATH / "config.ini"
+
+CONFIG = ROOT_DIR / "config.ini"
 if not CONFIG.exists():
     CONFIG.write_text(DEFAULT_CONF.strip())
 
