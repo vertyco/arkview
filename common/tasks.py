@@ -186,17 +186,23 @@ class ArkViewer:
         if cache.api_key and cache.api_key != request.headers.get("Authorization"):
             raise HTTPException(status_code=401, detail="Invalid API key!")
 
-    def info(self) -> dict:
+    def info(self, stringify: bool = False) -> dict:
         global cache
         return {
-            "last_export": int(cache.last_export),
-            "last_output": int(cache.last_output),
-            "port": cache.port,
-            "map_name": cache.map_file.name,
+            "last_export": str(cache.last_export)
+            if stringify
+            else int(cache.last_export),
+            "last_output": str(cache.last_output)
+            if stringify
+            else int(cache.last_output),
+            "port": str(cache.port) if stringify else cache.port,
+            "map_name": str(cache.map_file.name),
             "map_path": str(cache.map_file),
             "cluster_dir": str(cache.cluster_dir),
             "version": VERSION,
-            "cached_keys": list(cache.exports.keys()),
+            "cached_keys": ", ".join(cache.exports.keys())
+            if stringify
+            else list(cache.exports.keys()),
         }
 
     @router.get("/")
@@ -254,7 +260,7 @@ class ArkViewer:
                 detail=f"Invalid data type, valid types are: {joined}",
             )
 
-        info = self.info()
+        info = self.info(stringify=True)
 
         if datatype.lower() == "all":
             data = cache.exports
