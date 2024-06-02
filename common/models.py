@@ -9,6 +9,10 @@ class Banlist(BaseModel):
     bans: list[str]
 
 
+class Dtypes(BaseModel):
+    dtypes: list[str]
+
+
 class Cache(BaseModel):
     api_key: str = ""
     config: Path
