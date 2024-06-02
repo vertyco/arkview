@@ -17,8 +17,8 @@ log_format = logging.Formatter(
 debug_file_handler = RotatingFileHandler(
     "debug-logs.log",
     mode="a",
-    maxBytes=5 * 1024 * 1024,
-    backupCount=5,
+    maxBytes=1 * 1024 * 1024,
+    backupCount=0,
 )
 debug_file_handler.setFormatter(log_format)
 debug_file_handler.setLevel(logging.DEBUG)
@@ -27,8 +27,8 @@ debug_file_handler.setLevel(logging.DEBUG)
 info_file_handler = RotatingFileHandler(
     "logs.log",
     mode="a",
-    maxBytes=5 * 1024 * 1024,
-    backupCount=5,
+    maxBytes=1 * 1024 * 1024,
+    backupCount=0,
 )
 info_file_handler.setFormatter(log_format)
 info_file_handler.setLevel(logging.INFO)

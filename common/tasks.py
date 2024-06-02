@@ -16,7 +16,7 @@ from uvicorn import Config, Server
 from common.constants import API_CONF, DEFAULT_CONF, IS_EXE, IS_WINDOWS, VALID_DATATYPES
 from common.exporter import export_loop, load_outputs, process_export
 from common.logger import init_sentry
-from common.models import Banlist, cache  # noqa
+from common.models import Banlist, Dtypes, cache  # noqa
 from common.scheduler import scheduler
 from common.statusbar import status_bar
 from common.utils import dotnet_installed, format_sys_info
@@ -73,7 +73,7 @@ class ArkViewer:
         else:
             if dsn := settings.get(
                 "DSN",
-                fallback="https://8bea0228b52f6cf4188408cbf97aa4ae@sentry.vertyco.net/9",
+                fallback="https://ab80bb7b88b00008400a4c63dbf85dac@sentry.vertyco.net/4",
             ).replace('"', ""):
                 log.info("Initializing Sentry")
                 if dsn.strip():
@@ -189,7 +189,7 @@ class ArkViewer:
     def info(self, stringify: bool = False) -> dict:
         global cache
         return {
-            "last_export": str(cache.last_export)
+            "last_export": str(int(cache.last_export))
             if stringify
             else int(cache.last_export),
             "last_output": str(cache.last_output)
@@ -240,10 +240,6 @@ class ArkViewer:
             raise HTTPException(status_code=400, detail="Banlist file does not exist!")
         if not banlist.bans:
             raise HTTPException(status_code=400, detail="Banlist is empty!")
-        if not all([i.isdigit() for i in banlist.bans]):
-            raise HTTPException(
-                status_code=400, detail="Banlist must contain User IDs only"
-            )
         formatted = "\n".join(banlist.bans)
         cache.ban_file.write_text(formatted)
         return JSONResponse(content={"success": True, **self.info()})
@@ -273,6 +269,37 @@ class ArkViewer:
                     headers=info,
                 )
             data = {datatype: target_data}
+
+        return JSONResponse(content={**data, **info})
+
+    @router.post("/datas")
+    async def get_datas(self, request: Request, datatypes: Dtypes):
+        await self.check_keys(request)
+        global cache
+        invalid_types = [
+            datatype for datatype in datatypes.dtypes if datatype not in VALID_DATATYPES
+        ]
+
+        if invalid_types:
+            joined_valid = ", ".join(VALID_DATATYPES)
+            joined_invalid = ", ".join(invalid_types)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid data types {joined_invalid}, valid types are: {joined_valid}",
+            )
+
+        info = self.info(stringify=True)
+        data = {}
+
+        for datatype in datatypes.dtypes:
+            target_data = cache.exports.get(datatype)
+            if not target_data:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Datatype {datatype} not cached yet!",
+                    headers=info,
+                )
+            data[datatype] = target_data
 
         return JSONResponse(content={**data, **info})
 
