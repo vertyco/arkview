@@ -3,6 +3,7 @@ import json
 import logging
 import multiprocessing
 import os
+import sys
 from configparser import ConfigParser
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -165,6 +166,9 @@ class ArkViewer:
         global cache
         api.include_router(router)
         host = "127.0.0.1" if (cache.debug or not IS_EXE) else "0.0.0.0"
+        # Check if user provided arguments for host and port
+        if len(sys.argv) > 1:
+            host = sys.argv[1]
         config = Config(
             app=api,
             host=host,
