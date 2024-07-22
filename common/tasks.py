@@ -113,6 +113,7 @@ class ArkViewer:
             elif cache.ban_file and not cache.ban_file.lower().endswith(".txt"):
                 log.warning("Invalid Banlist file!")
                 return False
+            cache.ban_file = Path(cache.ban_file)
 
         txt = (
             f"\nRunning as EXE: {cache.root_dir}\n"
@@ -222,7 +223,7 @@ class ArkViewer:
         global cache
         if not cache.ban_file:
             raise HTTPException(status_code=400, detail="Banlist file not set!")
-        if not cache.ban_file.exists():
+        if isinstance(cache.ban_file, Path) and not cache.ban_file.exists():
             raise HTTPException(status_code=400, detail="Banlist file does not exist!")
         try:
             banlist_raw = cache.ban_file.read_text()
