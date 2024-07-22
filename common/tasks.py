@@ -70,7 +70,7 @@ class ArkViewer:
                 log.info("Using test files (ASE)")
                 cache.map_file = testdata / "mapdata" / "Ragnarok.ark"
                 cache.cluster_dir = testdata / "clusterdata"
-                # cache.ban_file = testdata / "mapdata" / "BanList.txt"
+            cache.ban_file = testdata / "BanList.txt"
         else:
             if dsn := settings.get(
                 "DSN",
@@ -231,8 +231,9 @@ class ArkViewer:
                 "banlist": [i.strip() for i in banlist_raw.split("\n") if i.strip()],
                 **self.info(),
             }
-            raise JSONResponse(content=content)
+            return JSONResponse(content=content)
         except Exception as e:
+            log.exception("Failed to read banlist file!")
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.put("/updatebanlist")
@@ -316,4 +317,5 @@ class ArkViewer:
             stats = await asyncio.to_thread(format_sys_info)
             return JSONResponse(content={**base, **stats})
         except Exception as e:
+            log.exception("Failed to get system info!")
             raise HTTPException(status_code=500, detail=str(e))
