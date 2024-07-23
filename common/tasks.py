@@ -106,14 +106,22 @@ class ArkViewer:
             else:
                 cache.cluster_dir = Path(cache.cluster_dir)
 
-            cache.ban_file = settings.get("BanListFile", fallback="").replace('"', "")
-            if cache.ban_file and not Path(cache.ban_file).exists():
-                log.warning("Banlist file does not exist, creating a new one!")
-                Path(cache.ban_file).write_text("")
-            elif cache.ban_file and not cache.ban_file.lower().endswith(".txt"):
-                log.warning("Invalid Banlist file!")
-                return False
-            cache.ban_file = Path(cache.ban_file)
+            ban_file = settings.get("BanListFile", fallback="").replace('"', "")
+            if ban_file:
+                path = Path(ban_file)
+                if not path.exists():
+                    log.error("Banlist file %s specified but does not exist!", path)
+                    return False
+                if not path.is_file():
+                    log.error("Banlist path %s is not a file!", path)
+                    return False
+                # Ensure it's a .txt file
+                if not path.name.lower().endswith(".txt"):
+                    log.error("Banlist file %s is not a .txt file!", path)
+                    return False
+                cache.ban_file = path
+            else:
+                log.info("Banlist file not set!")
 
         txt = (
             f"\nRunning as EXE: {cache.root_dir}\n"
@@ -233,7 +241,7 @@ class ArkViewer:
             }
             return JSONResponse(content=content)
         except Exception as e:
-            log.exception("Failed to read banlist file!")
+            log.exception("Failed to read banlist file %s", cache.ban_file)
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.put("/updatebanlist")
