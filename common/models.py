@@ -27,12 +27,14 @@ class Cache(BaseModel):
     debug: bool = False
     port: int = 8000
 
-    exports: dict[str, dict] = {}
+    exports: dict[str, list[dict]] = {}
     map_file: str | Path = ""
     cluster_dir: str | Path = ""
     ban_file: str | Path = ""
 
     asatest: bool = True
+
+    tribelog_buffer: set[str] = set()
 
 
 cache = Cache(
