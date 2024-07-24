@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime
+from hashlib import md5
 from pathlib import Path
 
 import orjson
@@ -152,6 +153,34 @@ async def load_outputs(target: str = ""):
 
         if not data:
             continue
+
+        def _precache(data):
+            first_run = not cache.tribelog_buffer
+            if first_run:
+                log.info("Pre-caching tribe logs")
+            new_tribelog_payload = []
+            for i in data:
+                if "logs" not in i:
+                    continue
+                tribe_id = i.get("tribeid")
+                if not tribe_id:
+                    continue
+                new_logs = []
+                for entry in i["logs"]:
+                    key = md5(f"{tribe_id}{entry}".encode()).hexdigest()
+                    if key in cache.tribelog_buffer:
+                        continue
+                    cache.tribelog_buffer.add(key)
+                    if not first_run:
+                        new_logs.append(entry)
+                if new_logs:
+                    i["logs"] = new_logs
+                    new_tribelog_payload.append(i)
+            data = new_tribelog_payload
+            return data
+
+        if key == "tribelogs":
+            data = await asyncio.to_thread(_precache, data)
 
         try:
             cache.exports[key] = data
