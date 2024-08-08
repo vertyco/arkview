@@ -10,7 +10,7 @@ import orjson
 
 from common.constants import IS_WINDOWS
 from common.models import cache  # noqa
-from common.utils import wait_for_process
+from common.utils import get_affinity_mask, wait_for_process
 
 log = logging.getLogger("arkview.exporter")
 
@@ -52,6 +52,10 @@ async def process_export():
     # Run exporter
     cache.last_export = map_file_modified
 
+    # Threads should be equal to a third of the total CPU threads
+    threads = max(1, (os.cpu_count() or 3) // 3)
+    mask = get_affinity_mask(threads)
+
     # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
     if IS_WINDOWS:
         command = [
@@ -59,7 +63,7 @@ async def process_export():
             "/LOW",
             "/MIN",
             "/AFFINITY",
-            "0x800",
+            mask,
             str(cache.exe_file),
             "all",
             f'"{cache.map_file}"',
