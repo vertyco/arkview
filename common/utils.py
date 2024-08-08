@@ -52,13 +52,13 @@ def dotnet_installed() -> bool:
 
 def get_affinity_mask(threads: int) -> str:
     # https://poweradm.com/set-cpu-affinity-powershell/
-    cpus = os.cpu_count()
+    cpus = os.cpu_count() or 1
     if threads > cpus:
         threads = cpus
 
     options = []
     num = 1
-    for c in range(cpus):
+    for _ in range(cpus):
         if not options:
             options.append(num)
         else:

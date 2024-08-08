@@ -52,8 +52,9 @@ async def process_export():
     # Run exporter
     cache.last_export = map_file_modified
 
-    # Threads should be equal to a third of the total CPU threads
-    threads = max(1, (os.cpu_count() or 3) // 3)
+    # Threads should be equal to half of the total CPU threads
+    available_cores = os.cpu_count() or 1
+    threads = max(1, available_cores // 2)
     mask = get_affinity_mask(threads)
 
     # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
