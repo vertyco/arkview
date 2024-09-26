@@ -9,42 +9,30 @@
       "ArkViewer/1.0.0": {
         "dependencies": {
           "ASVPack": "1.0.0",
-          "CoreRCON": "5.4.0",
+          "CoreRCON": "5.4.1",
           "FluentFTP": "50.0.0",
           "Microsoft.CSharp": "4.7.0",
-          "Microsoft.IO.RecyclableMemoryStream": "3.0.0",
-          "NLog": "5.3.2",
+          "Microsoft.IO.RecyclableMemoryStream": "3.0.1",
+          "NLog": "5.3.3",
           "Newtonsoft.Json": "13.0.3",
-          "SSH.NET": "2024.0.0",
+          "SSH.NET": "2024.1.0",
           "SkiaSharp.Views.Desktop.Common": "2.88.8",
-          "System.Drawing.Common": "8.0.6"
+          "System.Drawing.Common": "8.0.8"
         },
         "runtime": {
           "ArkViewer.dll": {}
         }
       },
-      "CoreRCON/5.4.0": {
+      "CoreRCON/5.4.1": {
         "dependencies": {
           "Microsoft.Extensions.Logging": "8.0.0",
-          "System.Diagnostics.DiagnosticSource": "8.0.0",
+          "System.Diagnostics.DiagnosticSource": "8.0.1",
           "System.IO.Pipelines": "8.0.0"
         },
         "runtime": {
           "lib/netstandard2.0/CoreRCON.dll": {
-            "assemblyVersion": "5.4.0.0",
-            "fileVersion": "5.4.0.0"
-          }
-        }
-      },
-      "DotNetZip/1.16.0": {
-        "dependencies": {
-          "System.Security.Permissions": "4.7.0",
-          "System.Text.Encoding.CodePages": "4.7.1"
-        },
-        "runtime": {
-          "lib/netstandard2.0/DotNetZip.dll": {
-            "assemblyVersion": "1.16.0.0",
-            "fileVersion": "1.16.0.0"
+            "assemblyVersion": "5.4.1.0",
+            "fileVersion": "5.4.1.0"
           }
         }
       },
@@ -57,20 +45,20 @@
         }
       },
       "Microsoft.CSharp/4.7.0": {},
-      "Microsoft.Data.Sqlite/8.0.6": {
+      "Microsoft.Data.Sqlite/8.0.8": {
         "dependencies": {
-          "Microsoft.Data.Sqlite.Core": "8.0.6",
+          "Microsoft.Data.Sqlite.Core": "8.0.8",
           "SQLitePCLRaw.bundle_e_sqlite3": "2.1.6"
         }
       },
-      "Microsoft.Data.Sqlite.Core/8.0.6": {
+      "Microsoft.Data.Sqlite.Core/8.0.8": {
         "dependencies": {
           "SQLitePCLRaw.core": "2.1.6"
         },
         "runtime": {
           "lib/net6.0/Microsoft.Data.Sqlite.dll": {
-            "assemblyVersion": "8.0.6.0",
-            "fileVersion": "8.0.624.26904"
+            "assemblyVersion": "8.0.8.0",
+            "fileVersion": "8.0.824.36704"
           }
         }
       },
@@ -140,15 +128,14 @@
           }
         }
       },
-      "Microsoft.IO.RecyclableMemoryStream/3.0.0": {
+      "Microsoft.IO.RecyclableMemoryStream/3.0.1": {
         "runtime": {
           "lib/net6.0/Microsoft.IO.RecyclableMemoryStream.dll": {
-            "assemblyVersion": "3.0.0.0",
-            "fileVersion": "3.0.0.0"
+            "assemblyVersion": "3.0.1.0",
+            "fileVersion": "3.0.1.0"
           }
         }
       },
-      "Microsoft.NETCore.Platforms/3.1.1": {},
       "Microsoft.Win32.SystemEvents/8.0.0": {
         "runtime": {
           "lib/net6.0/Microsoft.Win32.SystemEvents.dll": {
@@ -173,11 +160,11 @@
           }
         }
       },
-      "NLog/5.3.2": {
+      "NLog/5.3.3": {
         "runtime": {
           "lib/netstandard2.0/NLog.dll": {
             "assemblyVersion": "5.0.0.0",
-            "fileVersion": "5.3.2.2526"
+            "fileVersion": "5.3.3.2683"
           }
         }
       },
@@ -232,7 +219,7 @@
       "SkiaSharp.Views.Desktop.Common/2.88.8": {
         "dependencies": {
           "SkiaSharp": "2.88.8",
-          "System.Drawing.Common": "8.0.6"
+          "System.Drawing.Common": "8.0.8"
         },
         "runtime": {
           "lib/netcoreapp3.1/SkiaSharp.Views.Desktop.Common.dll": {
@@ -379,33 +366,33 @@
           }
         }
       },
-      "SSH.NET/2024.0.0": {
+      "SSH.NET/2024.1.0": {
         "runtime": {
           "lib/net6.0/Renci.SshNet.dll": {
-            "assemblyVersion": "2024.0.0.0",
-            "fileVersion": "2024.0.0.0"
+            "assemblyVersion": "2024.1.0.0",
+            "fileVersion": "2024.1.0.0"
           }
         }
       },
-      "System.Diagnostics.DiagnosticSource/8.0.0": {
+      "System.Diagnostics.DiagnosticSource/8.0.1": {
         "dependencies": {
           "System.Runtime.CompilerServices.Unsafe": "6.0.0"
         },
         "runtime": {
           "lib/net6.0/System.Diagnostics.DiagnosticSource.dll": {
             "assemblyVersion": "8.0.0.0",
-            "fileVersion": "8.0.23.53103"
+            "fileVersion": "8.0.424.16909"
           }
         }
       },
-      "System.Drawing.Common/8.0.6": {
+      "System.Drawing.Common/8.0.8": {
         "dependencies": {
           "Microsoft.Win32.SystemEvents": "8.0.0"
         },
         "runtime": {
           "lib/net6.0/System.Drawing.Common.dll": {
             "assemblyVersion": "8.0.0.0",
-            "fileVersion": "8.0.624.26909"
+            "fileVersion": "8.0.824.36606"
           }
         }
       },
@@ -419,34 +406,10 @@
       },
       "System.Memory/4.5.3": {},
       "System.Runtime.CompilerServices.Unsafe/6.0.0": {},
-      "System.Security.AccessControl/4.7.0": {
-        "dependencies": {
-          "Microsoft.NETCore.Platforms": "3.1.1",
-          "System.Security.Principal.Windows": "4.7.0"
-        }
-      },
-      "System.Security.Permissions/4.7.0": {
-        "dependencies": {
-          "System.Security.AccessControl": "4.7.0",
-          "System.Windows.Extensions": "4.7.0"
-        }
-      },
-      "System.Security.Principal.Windows/4.7.0": {},
-      "System.Text.Encoding.CodePages/4.7.1": {
-        "dependencies": {
-          "Microsoft.NETCore.Platforms": "3.1.1"
-        }
-      },
-      "System.Windows.Extensions/4.7.0": {
-        "dependencies": {
-          "System.Drawing.Common": "8.0.6"
-        }
-      },
       "AsaSavegameToolkit/1.0.0": {
         "dependencies": {
-          "DotNetZip": "1.16.0",
-          "Microsoft.Data.Sqlite": "8.0.6",
-          "NLog": "5.3.2"
+          "Microsoft.Data.Sqlite": "8.0.8",
+          "NLog": "5.3.3"
         },
         "runtime": {
           "AsaSavegameToolkit.dll": {}
@@ -455,8 +418,8 @@
       "ASVPack/1.0.0": {
         "dependencies": {
           "AsaSavegameToolkit": "1.0.0",
-          "Microsoft.IO.RecyclableMemoryStream": "3.0.0",
-          "NLog": "5.3.2",
+          "Microsoft.IO.RecyclableMemoryStream": "3.0.1",
+          "NLog": "5.3.3",
           "Newtonsoft.Json": "13.0.3",
           "SavegameToolkit": "1.0.0",
           "SavegameToolkitAdditions": "1.0.0",
@@ -469,7 +432,7 @@
       },
       "SavegameToolkit/1.0.0": {
         "dependencies": {
-          "Microsoft.IO.RecyclableMemoryStream": "3.0.0",
+          "Microsoft.IO.RecyclableMemoryStream": "3.0.1",
           "Newtonsoft.Json": "13.0.3"
         },
         "runtime": {
@@ -492,19 +455,12 @@
       "serviceable": false,
       "sha512": ""
     },
-    "CoreRCON/5.4.0": {
+    "CoreRCON/5.4.1": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-sGGXG1iIBSyqb6Fi60A4UVyXxS2jzpAV37XSoYspcDOqc0jJeCsqH1WXXJXb1ezqsNi4kXqhTm86rf69QeeGSQ==",
-      "path": "corercon/5.4.0",
-      "hashPath": "corercon.5.4.0.nupkg.sha512"
-    },
-    "DotNetZip/1.16.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-CS9sjjXF23FLIbwlLT5k/jXBYxVnLMn01lyAvN/hxFM+UDvSicjTPB9ZMA+Wp/QlvBPbD2pzkAXUp1O50gP/Lw==",
-      "path": "dotnetzip/1.16.0",
-      "hashPath": "dotnetzip.1.16.0.nupkg.sha512"
+      "sha512": "sha512-RCHNbOlilx99DnCv7XeIGL68ivbMZLKYe6htGX0kiwnshUiIyP3p0369vKuymRQgLQfONuHDsdKQW69rvOaxNQ==",
+      "path": "corercon/5.4.1",
+      "hashPath": "corercon.5.4.1.nupkg.sha512"
     },
     "FluentFTP/50.0.0": {
       "type": "package",
@@ -520,19 +476,19 @@
       "path": "microsoft.csharp/4.7.0",
       "hashPath": "microsoft.csharp.4.7.0.nupkg.sha512"
     },
-    "Microsoft.Data.Sqlite/8.0.6": {
+    "Microsoft.Data.Sqlite/8.0.8": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-YVzVtU1IoGsTiMAe0BNV9ssKyrUm6lBQJP6w2N4W29YrBYYtyCmTFmrNGjxaJtJXVqttu0sYkPxmStj/OnMFdg==",
-      "path": "microsoft.data.sqlite/8.0.6",
-      "hashPath": "microsoft.data.sqlite.8.0.6.nupkg.sha512"
+      "sha512": "sha512-Ao+kD9lZpZvvvfLHMR4/UviFGXaWhQ9AVT4fYMl62XWgIPuVIhZqLysmDNiXbsz6Pb87iyyElX2xSfigzKNZNg==",
+      "path": "microsoft.data.sqlite/8.0.8",
+      "hashPath": "microsoft.data.sqlite.8.0.8.nupkg.sha512"
     },
-    "Microsoft.Data.Sqlite.Core/8.0.6": {
+    "Microsoft.Data.Sqlite.Core/8.0.8": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-umhZ0ZF2RI81rGFTnYmCxI+Euj4Aqe/6Y4+8CxN9OVJNGDNIqB5laJ3wxQTU8zXCcm2k9F7FL+/6RVoOT4z1Fw==",
-      "path": "microsoft.data.sqlite.core/8.0.6",
-      "hashPath": "microsoft.data.sqlite.core.8.0.6.nupkg.sha512"
+      "sha512": "sha512-qHInO2EvOcPhjgboP0TGnXM7rASdvWXrw6jAH8Yuz5YP82VTje7d/NKiX1i+dVbE3+G3JuW1kqNVB8yLvsqgYA==",
+      "path": "microsoft.data.sqlite.core/8.0.8",
+      "hashPath": "microsoft.data.sqlite.core.8.0.8.nupkg.sha512"
     },
     "Microsoft.Extensions.DependencyInjection/8.0.0": {
       "type": "package",
@@ -576,19 +532,12 @@
       "path": "microsoft.extensions.primitives/8.0.0",
       "hashPath": "microsoft.extensions.primitives.8.0.0.nupkg.sha512"
     },
-    "Microsoft.IO.RecyclableMemoryStream/3.0.0": {
+    "Microsoft.IO.RecyclableMemoryStream/3.0.1": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-irv0HuqoH8Ig5i2fO+8dmDNdFdsrO+DoQcedwIlb810qpZHBNQHZLW7C/AHBQDgLLpw2T96vmMAy/aE4Yj55Sg==",
-      "path": "microsoft.io.recyclablememorystream/3.0.0",
-      "hashPath": "microsoft.io.recyclablememorystream.3.0.0.nupkg.sha512"
-    },
-    "Microsoft.NETCore.Platforms/3.1.1": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-RmINcaqiEkawM9C8oxFMN/CZmn1fGKWVsosbSY/8ARUNdHqV47hqhPVbrG3qUqLaRQI5w4HuqFOqrbhoSWcH6w==",
-      "path": "microsoft.netcore.platforms/3.1.1",
-      "hashPath": "microsoft.netcore.platforms.3.1.1.nupkg.sha512"
+      "sha512": "sha512-s/s20YTVY9r9TPfTrN5g8zPF1YhwxyqO6PxUkrYTGI2B+OGPe9AdajWZrLhFqXIvqIW23fnUE4+ztrUWNU1+9g==",
+      "path": "microsoft.io.recyclablememorystream/3.0.1",
+      "hashPath": "microsoft.io.recyclablememorystream.3.0.1.nupkg.sha512"
     },
     "Microsoft.Win32.SystemEvents/8.0.0": {
       "type": "package",
@@ -604,12 +553,12 @@
       "path": "newtonsoft.json/13.0.3",
       "hashPath": "newtonsoft.json.13.0.3.nupkg.sha512"
     },
-    "NLog/5.3.2": {
+    "NLog/5.3.3": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-cQRQZuDMjSyMe9EQBnI9v55YAMMz8GAfFd6fFJ6tc/kXnG7Hze8p1I8MgvWSBG6E36wA8vSxRrlm8uSIG+SENg==",
-      "path": "nlog/5.3.2",
-      "hashPath": "nlog.5.3.2.nupkg.sha512"
+      "sha512": "sha512-cy0+hlrUbYu+6mgUsILqCcqlJ2Csqyt2lm8y9T9kE8nhgwl8SvR+LM21QX4nmzFCPiowbrTFYxNF8+gWpy7/HQ==",
+      "path": "nlog/5.3.3",
+      "hashPath": "nlog.5.3.3.nupkg.sha512"
     },
     "SharpZipLib/1.4.2": {
       "type": "package",
@@ -674,26 +623,26 @@
       "path": "sqlitepclraw.provider.e_sqlite3/2.1.6",
       "hashPath": "sqlitepclraw.provider.e_sqlite3.2.1.6.nupkg.sha512"
     },
-    "SSH.NET/2024.0.0": {
+    "SSH.NET/2024.1.0": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-klFPBbrGtFY9V8kbh5PQwlexj7Z8fwbpwABvLX0QzCmzW06rkLknEeM1l6np2hkUfg5an5w/GzHUhWTHN1TJpA==",
-      "path": "ssh.net/2024.0.0",
-      "hashPath": "ssh.net.2024.0.0.nupkg.sha512"
+      "sha512": "sha512-pyOea9czgC+OwMoetuWtMuwRebOyskKkqTZtODgyEZ5K6JwV+Hh/GFiyYubl93YnEvmvNZeuyWyUDsb3LvBDYA==",
+      "path": "ssh.net/2024.1.0",
+      "hashPath": "ssh.net.2024.1.0.nupkg.sha512"
     },
-    "System.Diagnostics.DiagnosticSource/8.0.0": {
+    "System.Diagnostics.DiagnosticSource/8.0.1": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-c9xLpVz6PL9lp/djOWtk5KPDZq3cSYpmXoJQY524EOtuFl5z9ZtsotpsyrDW40U1DRnQSYvcPKEUV0X//u6gkQ==",
-      "path": "system.diagnostics.diagnosticsource/8.0.0",
-      "hashPath": "system.diagnostics.diagnosticsource.8.0.0.nupkg.sha512"
+      "sha512": "sha512-vaoWjvkG1aenR2XdjaVivlCV9fADfgyhW5bZtXT23qaEea0lWiUljdQuze4E31vKM7ZWJaSUsbYIKE3rnzfZUg==",
+      "path": "system.diagnostics.diagnosticsource/8.0.1",
+      "hashPath": "system.diagnostics.diagnosticsource.8.0.1.nupkg.sha512"
     },
-    "System.Drawing.Common/8.0.6": {
+    "System.Drawing.Common/8.0.8": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-aSwRnJzz6fZ73JvWMMG0KvBwOnXsBTFtfHLriQyAPrDIZ+NrDfl15GWbO/A35k0dtH77D7jfxzEcFF7RONtU/w==",
-      "path": "system.drawing.common/8.0.6",
-      "hashPath": "system.drawing.common.8.0.6.nupkg.sha512"
+      "sha512": "sha512-4ZM1wvLjz9nVVExsfPAaSl/qOvU+QNedJL5rQ+2Wbow+iGeyO0e7XN07707rMBgaffEeeLrCZBwC0oHUuvRdPw==",
+      "path": "system.drawing.common/8.0.8",
+      "hashPath": "system.drawing.common.8.0.8.nupkg.sha512"
     },
     "System.IO.Pipelines/8.0.0": {
       "type": "package",
@@ -715,41 +664,6 @@
       "sha512": "sha512-/iUeP3tq1S0XdNNoMz5C9twLSrM/TH+qElHkXWaPvuNOt+99G75NrV0OS2EqHx5wMN7popYjpc8oTjC1y16DLg==",
       "path": "system.runtime.compilerservices.unsafe/6.0.0",
       "hashPath": "system.runtime.compilerservices.unsafe.6.0.0.nupkg.sha512"
-    },
-    "System.Security.AccessControl/4.7.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-JECvTt5aFF3WT3gHpfofL2MNNP6v84sxtXxpqhLBCcDRzqsPBmHhQ6shv4DwwN2tRlzsUxtb3G9M3763rbXKDg==",
-      "path": "system.security.accesscontrol/4.7.0",
-      "hashPath": "system.security.accesscontrol.4.7.0.nupkg.sha512"
-    },
-    "System.Security.Permissions/4.7.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-dkOV6YYVBnYRa15/yv004eCGRBVADXw8qRbbNiCn/XpdJSUXkkUeIvdvFHkvnko4CdKMqG8yRHC4ox83LSlMsQ==",
-      "path": "system.security.permissions/4.7.0",
-      "hashPath": "system.security.permissions.4.7.0.nupkg.sha512"
-    },
-    "System.Security.Principal.Windows/4.7.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-ojD0PX0XhneCsUbAZVKdb7h/70vyYMDYs85lwEI+LngEONe/17A0cFaRFqZU+sOEidcVswYWikYOQ9PPfjlbtQ==",
-      "path": "system.security.principal.windows/4.7.0",
-      "hashPath": "system.security.principal.windows.4.7.0.nupkg.sha512"
-    },
-    "System.Text.Encoding.CodePages/4.7.1": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-i2fOvznVVgOOTLUz8FgSap/MsR98I4Iaoz99VXcOW/e7Y2OdY42zhYpBYpZyivk5alYY/UsOWAVswhtjxceodA==",
-      "path": "system.text.encoding.codepages/4.7.1",
-      "hashPath": "system.text.encoding.codepages.4.7.1.nupkg.sha512"
-    },
-    "System.Windows.Extensions/4.7.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-CeWTdRNfRaSh0pm2gDTJFwVaXfTq6Xwv/sA887iwPTneW7oMtMlpvDIO+U60+3GWTB7Aom6oQwv5VZVUhQRdPQ==",
-      "path": "system.windows.extensions/4.7.0",
-      "hashPath": "system.windows.extensions.4.7.0.nupkg.sha512"
     },
     "AsaSavegameToolkit/1.0.0": {
       "type": "project",
