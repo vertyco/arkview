@@ -32,9 +32,9 @@
       "Filename": "thecenter_wp.ark",
       "ImageFile": "map_thecenter_asa.jpg",
       "LatShift": 32.5,
-      "LatDiv": 10375,
+      "LatDiv": 10380.52,
       "LonShift": 50.5,
-      "LonDiv": 10375
+      "LonDiv": 10374.29
     },
     {
       "MapName": "Scorched Earth",
@@ -55,9 +55,18 @@
       "LonDiv": 8000.0
     },
     {
-      "MapName": "Aberration",
+      "MapName": "Aberration (Evolved)",
       "Filename": "aberration_p.ark",
       "ImageFile": "map_aberration.png",
+      "LatShift": 50.0,
+      "LatDiv": 8000.0,
+      "LonShift": 50.0,
+      "LonDiv": 8000.0
+    },
+    {
+      "MapName": "Aberration (Ascended)",
+      "Filename": "aberration_wp.ark",
+      "ImageFile": "map_aberration_wp.png",
       "LatShift": 50.0,
       "LatDiv": 8000.0,
       "LonShift": 50.0,
