@@ -58,6 +58,8 @@ async def process_export():
     mask = get_affinity_mask(threads)
 
     # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
+    # ASVExport.exe all "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\map_ase\Ragnarok.ark" "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\solecluster_ase\" "C:\Users\Vert\Desktop\output\"
+    # ASVExport.exe all "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\map_asa\TheIsland_WP.ark" "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\solecluster_asa\" "C:\Users\Vert\Desktop\output\"
     if IS_WINDOWS:
         command = [
             "start",

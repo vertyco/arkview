@@ -64,13 +64,12 @@ class ArkViewer:
             testdata = cache.root_dir / "testdata"
             if cache.asatest:
                 log.info("Using test files (ASA)")
-                cache.map_file = testdata / "asamapdata" / "TheIsland_WP.ark"
-                # cache.ban_file = testdata / "asamapdata" / "BanList.txt"
+                cache.map_file = testdata / "map_asa" / "TheIsland_WP.ark"
+                cache.cluster_dir = testdata / "solecluster_asa"
             else:
                 log.info("Using test files (ASE)")
-                cache.map_file = testdata / "mapdata" / "Ragnarok.ark"
-                cache.cluster_dir = testdata / "clusterdata"
-            cache.ban_file = testdata / "BanList.txt"
+                cache.map_file = testdata / "map_ase" / "Ragnarok.ark"
+                cache.cluster_dir = testdata / "solecluster_ase"
         else:
             if dsn := settings.get(
                 "DSN",
