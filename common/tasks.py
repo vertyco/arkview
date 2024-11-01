@@ -49,12 +49,51 @@ class ArkViewer:
         log.info(f"Reading from {cache.config}")
         parser.read(str(cache.config))
         settings = parser["Settings"]
+
+        # Make sure all settings are present
+        required = [
+            "Port",
+            "BanListFile",
+            "MapFilePath",
+            "ClusterFolderPath",
+            "Priority",
+            "Threads",
+            "Debug",
+            "DSN",
+            "APIKey",
+        ]
+        # We want to update the config file with the default values if they're missing
+        for key in required:
+            if key in settings:
+                continue
+            # Rename the current config file to `config.ini.old`
+            cache.config.rename(cache.config.with_suffix(".old"))
+            # Write the default config to a new file
+            cache.config.write_text(DEFAULT_CONF.strip())
+            log.warning(
+                (
+                    "ArkViewer has settings missing from your config file!\n"
+                    "Your current config file has been renamed to `config.old` and a new one has been created.\n"
+                    "Please fill in the missing settings and restart the application."
+                )
+            )
+            input("Press Enter to continue...")
+            return False
+
         parsed = [f"{k}: {v}\n" for k, v in settings.items()]
         log.info(f"Parsed settings\n{''.join(parsed)}")
 
         cache.debug = settings.getboolean("Debug", fallback=False)
         cache.asatest = settings.getboolean("ASATest", fallback=False)
         cache.port = settings.getint("Port", fallback=8000)
+
+        priority = settings.get("Priority", fallback="NORMAL").upper()
+        if priority not in ["LOW", "BELOWNORMAL", "NORMAL", "ABOVENORMAL", "HIGH"]:
+            log.error("Invalid priority setting! Using LOW")
+            priority = "LOW"
+        cache.priority = priority
+
+        cache.threads = settings.getint("Threads", fallback=2)
 
         cache.api_key = settings.get("APIKey", fallback="").replace('"', "")
         if not cache.api_key:
@@ -130,7 +169,8 @@ class ArkViewer:
             f"Output Dir: {cache.output_dir}\n"
             f"Working Dir: {os.getcwd()}\n"
             f"Debug: {cache.debug}\n"
-            f"Cores: {os.cpu_count()}\n"
+            f"Using Cores: {cache.threads}/{os.cpu_count()}\n"
+            f"Priority: {cache.priority}\n"
             f"OS: {'Windows' if IS_WINDOWS else 'Linux'}\n"
             f"LD Lib: {os.environ.get('LD_LIBRARY_PATH')}\n"
         )

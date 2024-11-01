@@ -110,6 +110,6 @@ def init_sentry(dsn: str, version: str) -> None:
             LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
         ],
         release=version,
-        environment="windows",
-        ignore_errors=[KeyboardInterrupt],
+        environment=sys.platform,
+        ignore_errors=[KeyboardInterrupt, RuntimeError],
     )

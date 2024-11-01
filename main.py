@@ -42,9 +42,12 @@ class Manager:
         await asyncio.gather(*tasks, return_exceptions=True)
 
         log.info("Shutting down asyncgens...")
-        await self.loop.shutdown_asyncgens()
-        await asyncio.sleep(1)
-        self.loop.stop()
+        try:
+            await self.loop.shutdown_asyncgens()
+            await asyncio.sleep(1)
+            self.loop.stop()
+        except RuntimeError:
+            pass
 
     @classmethod
     def run(cls) -> None:

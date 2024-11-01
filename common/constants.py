@@ -6,13 +6,32 @@ from uvicorn.config import LOGGING_CONFIG
 
 DEFAULT_CONF = """
 [Settings]
-APIKey =
+# Port for the API to listen on (TCP)
 Port = 8000
+
+# Direct path to BanList.txt file
 BanListFile =
+
+# Direct path to the .ark map file
 MapFilePath =
+
+# Direct path to the solecluster folder
 ClusterFolderPath =
+
+# Process priority(Windows-only): LOW, BELOWNORMAL, NORMAL, ABOVENORMAL, HIGH
+Priority = LOW
+
+# Number of threads to use for processing (if higher than CPU threads, it will be set to CPU threads)
+Threads = 2
+
+# If true, api will only be accessible locally (If running as python, this will cause the client to fail)
 Debug = False
+
+# (Optional): Set a sentry DSN for error tracking
 DSN =
+
+# (Optional): API Key for authentication
+APIKey =
 """
 
 IS_WINDOWS: bool = sys.platform.startswith("win")
@@ -74,7 +93,7 @@ API_CONF["handlers"]["file"] = {
     "filename": str(ROOT_DIR / "uvicorn.log"),
     "mode": "a",
     "maxBytes": 1024 * 1024,
-    "backupCount": 3,
+    "backupCount": 1,
 }
 API_CONF["loggers"]["uvicorn"] = {
     "handlers": ["default", "file"],
