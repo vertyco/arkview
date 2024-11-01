@@ -17,7 +17,7 @@ ArkView only processes one server per instance, so if you are running multiple m
 
 The client uses a `config.ini` file to store the configuration. The file is created when you run the client for the first time. You can also create it manually by copying the `default_config.ini` file from the repo and renaming it to `config.ini`.
 
-````ini
+```ini
 [Settings]
 # Port for the API to listen on (TCP)
 # Make sure to forward this port in your router and allow it as TCP in your firewall
@@ -94,7 +94,7 @@ sudo nano config.ini  # Save and exit with ctrl + O; enter; ctrl + X
 
 # Run the client
 python3.11 main.py
-````
+```
 
 ## Setting up Auto-Start on Boot for linux
 
