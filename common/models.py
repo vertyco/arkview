@@ -19,6 +19,8 @@ class Cache(BaseModel):
     root_dir: Path
     output_dir: Path
     exe_file: Path
+    priority: str = "LOW"  # LOW, BELOWNORMAL, NORMAL, ABOVENORMAL, HIGH
+    threads: int = 2
 
     last_export: int = 0
     last_output: int = 0

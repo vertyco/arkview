@@ -136,3 +136,4 @@ releases/
 # other
 config.ini
 build.py
+*.old

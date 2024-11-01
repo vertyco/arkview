@@ -49,21 +49,24 @@ async def process_export():
             await asyncio.sleep(5)
             return
 
+        log.info("Map file has been updated, re-exporting")
+
     # Run exporter
     cache.last_export = map_file_modified
 
     # Threads should be equal to half of the total CPU threads
     available_cores = os.cpu_count() or 1
-    threads = max(1, available_cores // 2)
-    mask = get_affinity_mask(threads)
+    threads = min(available_cores, cache.threads)
+    priority = cache.priority  # LOW, BELOWNORMAL, NORMAL, ABOVENORMAL, HIGH
 
     # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
     # ASVExport.exe all "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\map_ase\Ragnarok.ark" "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\solecluster_ase\" "C:\Users\Vert\Desktop\output\"
     # ASVExport.exe all "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\map_asa\TheIsland_WP.ark" "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\solecluster_asa\" "C:\Users\Vert\Desktop\output\"
     if IS_WINDOWS:
+        mask = get_affinity_mask(threads)
         command = [
             "start",
-            "/LOW",
+            f"/{priority}",
             "/MIN",
             "/AFFINITY",
             mask,
@@ -75,10 +78,11 @@ async def process_export():
             command.append(f'"{cdir}\\"')
         command.append(f'"{cache.output_dir}\\"')
     else:
+        cpu_range = f"0-{threads - 1}" if threads > 1 else "0"
         command = [
             "taskset",
             "-c",
-            "0",
+            cpu_range,
             "dotnet",
             str(cache.exe_file),
             "all",
@@ -106,10 +110,7 @@ async def process_export():
                 command,
                 check=True,
                 text=True,
-                # shell=True,
                 capture_output=True,
-                # stdout=subprocess.PIPE,
-                # stderr=subprocess.PIPE,
             )
             if stdout := result.stdout:
                 log.info(stdout)
