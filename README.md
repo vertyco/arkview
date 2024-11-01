@@ -13,6 +13,41 @@ ArkView only processes one server per instance, so if you are running multiple m
 ![black](https://img.shields.io/badge/style-black-000000?style=for-the-badge&?link=https://github.com/psf/black)
 ![GitHub repo size](https://img.shields.io/github/repo-size/Vertyco/arkview?color=blueviolet&style=for-the-badge)
 
+# Configuration
+
+The client uses a `config.ini` file to store the configuration. The file is created when you run the client for the first time. You can also create it manually by copying the `default_config.ini` file from the repo and renaming it to `config.ini`.
+
+````ini
+[Settings]
+# Port for the API to listen on (TCP)
+# Make sure to forward this port in your router and allow it as TCP in your firewall
+Port = 8000
+
+# Direct path to the .ark map file
+MapFilePath = path/to/your/map.ark
+
+# (Optional): Direct path to the solecluster folder
+ClusterFolderPath = path/to/your/solecluster
+
+# (Optional): Direct path to BanList.txt file
+BanListFile = path/to/your/BanList.txt
+
+# Process priority(Windows-only): LOW, BELOWNORMAL, NORMAL, ABOVENORMAL, HIGH
+Priority = LOW
+
+# Number of threads to use for processing (if higher than CPU threads, it will be set to CPU threads)
+Threads = 2
+
+# If true, api will only be accessible locally (If running as python, this will cause the client to fail)
+Debug = False
+
+# (Optional): Set a sentry DSN for error tracking
+DSN =
+
+# (Optional): API Key for authentication
+APIKey =
+```
+
 # Running on Windows
 
 You will need windows with the latest .NET v6.0 framework to run this client
@@ -59,7 +94,7 @@ sudo nano config.ini  # Save and exit with ctrl + O; enter; ctrl + X
 
 # Run the client
 python3.11 main.py
-```
+````
 
 ## Setting up Auto-Start on Boot for linux
 

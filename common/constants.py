@@ -7,16 +7,17 @@ from uvicorn.config import LOGGING_CONFIG
 DEFAULT_CONF = """
 [Settings]
 # Port for the API to listen on (TCP)
+# Make sure to forward this port in your router and allow it as TCP in your firewall
 Port = 8000
-
-# Direct path to BanList.txt file
-BanListFile =
 
 # Direct path to the .ark map file
 MapFilePath =
 
-# Direct path to the solecluster folder
+# (Optional): Direct path to the solecluster folder
 ClusterFolderPath =
+
+# (Optional): Direct path to BanList.txt file
+BanListFile =
 
 # Process priority(Windows-only): LOW, BELOWNORMAL, NORMAL, ABOVENORMAL, HIGH
 Priority = LOW

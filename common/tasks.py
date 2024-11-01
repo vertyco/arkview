@@ -77,7 +77,6 @@ class ArkViewer:
                     "Please fill in the missing settings and restart the application."
                 )
             )
-            input("Press Enter to continue...")
             return False
 
         parsed = [f"{k}: {v}\n" for k, v in settings.items()]
