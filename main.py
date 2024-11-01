@@ -28,7 +28,7 @@ class Manager:
         scheduler.remove_all_jobs()
         success = await self.handler.initialize()
         if not success:
-            log.critical("Something went wrong during startup!")
+            input("Initialization failed. Press any key to exit...")
             self.loop.stop()
 
     async def shutdown(self) -> None:
