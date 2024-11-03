@@ -8,6 +8,7 @@ from configparser import ConfigParser
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import psutil
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi_utils.cbv import cbv
@@ -257,6 +258,9 @@ class ArkViewer:
             if "day" in v:
                 day = v["day"]
                 time = v["time"]
+        uptime = (
+            datetime.now() - datetime.fromtimestamp(psutil.boot_time())
+        ).total_seconds()
         return {
             "last_export": str(int(cache.last_export))
             if stringify
@@ -269,8 +273,9 @@ class ArkViewer:
             "cached_keys": ", ".join(cache.exports.keys())
             if stringify
             else list(cache.exports.keys()),
-            "day": day,
+            "day": str(day) if stringify else day,
             "time": time,
+            "uptime": str(uptime) if stringify else uptime,
         }
 
     @router.get("/")
