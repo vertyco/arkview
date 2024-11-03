@@ -76,7 +76,7 @@ def init_logging():
     # Console Log
     stdout_handler = logging.StreamHandler()
     stdout_handler.setFormatter(PrettyFormatter())
-    stdout_handler.setLevel(logging.INFO)
+    stdout_handler.setLevel(logging.DEBUG)
 
     handlers = [stdout_handler]
 
