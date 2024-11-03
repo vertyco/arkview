@@ -83,6 +83,10 @@ class ArkViewer:
         log.info(f"Parsed settings\n{''.join(parsed)}")
 
         cache.debug = settings.getboolean("Debug", fallback=False)
+        if cache.debug:
+            log.setLevel(logging.DEBUG)
+        else:
+            log.setLevel(logging.INFO)
         cache.asatest = settings.getboolean("ASATest", fallback=False)
         cache.port = settings.getint("Port", fallback=8000)
 
@@ -233,19 +237,30 @@ class ArkViewer:
         if cache.api_key and not request.headers.get(
             "Authorization", request.headers.get("authorization")
         ):
-            raise HTTPException(status_code=405, detail="No API key provided!")
+            raise HTTPException(
+                status_code=405,
+                detail="No API key provided!",
+                headers=self.info(stringify=True),
+            )
         if cache.api_key and cache.api_key != request.headers.get("Authorization"):
-            raise HTTPException(status_code=401, detail="Invalid API key!")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid API key!",
+                headers=self.info(stringify=True),
+            )
 
     def info(self, stringify: bool = False) -> dict:
         global cache
+        day = 0
+        time = "00:00"
+        for v in cache.exports.values():
+            if "day" in v:
+                day = v["day"]
+                time = v["time"]
         return {
             "last_export": str(int(cache.last_export))
             if stringify
             else int(cache.last_export),
-            "last_output": str(cache.last_output)
-            if stringify
-            else int(cache.last_output),
             "port": str(cache.port) if stringify else cache.port,
             "map_name": str(cache.map_file.name),
             "map_path": str(cache.map_file),
@@ -254,6 +269,8 @@ class ArkViewer:
             "cached_keys": ", ".join(cache.exports.keys())
             if stringify
             else list(cache.exports.keys()),
+            "day": day,
+            "time": time,
         }
 
     @router.get("/")
@@ -268,9 +285,17 @@ class ArkViewer:
         await self.check_keys(request)
         global cache
         if not cache.ban_file:
-            raise HTTPException(status_code=400, detail="Banlist file not set!")
+            raise HTTPException(
+                status_code=400,
+                detail="Banlist file not set!",
+                headers=self.info(stringify=True),
+            )
         if isinstance(cache.ban_file, Path) and not cache.ban_file.exists():
-            raise HTTPException(status_code=400, detail="Banlist file does not exist!")
+            raise HTTPException(
+                status_code=400,
+                detail="Banlist file does not exist!",
+                headers=self.info(stringify=True),
+            )
         try:
             banlist_raw = cache.ban_file.read_text()
             content = {
@@ -280,18 +305,34 @@ class ArkViewer:
             return JSONResponse(content=content)
         except Exception as e:
             log.exception("Failed to read banlist file %s", cache.ban_file)
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(
+                status_code=500,
+                detail=str(e),
+                headers=self.info(stringify=True),
+            )
 
     @router.put("/updatebanlist")
     async def update_banlist(self, request: Request, banlist: Banlist):
         await self.check_keys(request)
         global cache
         if not cache.ban_file:
-            raise HTTPException(status_code=400, detail="Banlist file not set!")
+            raise HTTPException(
+                status_code=400,
+                detail="Banlist file not set!",
+                headers=self.info(stringify=True),
+            )
         if not cache.ban_file.exists():
-            raise HTTPException(status_code=400, detail="Banlist file does not exist!")
+            raise HTTPException(
+                status_code=400,
+                detail="Banlist file does not exist!",
+                headers=self.info(stringify=True),
+            )
         if not banlist.bans:
-            raise HTTPException(status_code=400, detail="Banlist is empty!")
+            raise HTTPException(
+                status_code=400,
+                detail="Banlist is empty!",
+                headers=self.info(stringify=True),
+            )
         formatted = "\n".join(banlist.bans)
         cache.ban_file.write_text(formatted)
         return JSONResponse(content={"success": True, **self.info()})
@@ -306,10 +347,8 @@ class ArkViewer:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid data type, valid types are: {joined}",
+                headers=self.info(stringify=True),
             )
-
-        info = self.info(stringify=True)
-
         if datatype.lower() == "all":
             data = cache.exports
         else:
@@ -318,11 +357,11 @@ class ArkViewer:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Datatype {datatype} not cached yet!",
-                    headers=info,
+                    headers=self.info(stringify=True),
                 )
             data = {datatype: target_data}
 
-        return JSONResponse(content={**data, **info})
+        return JSONResponse(content={**data, **self.info()})
 
     @router.post("/datas")
     async def get_datas(self, request: Request, datatypes: Dtypes):
@@ -338,9 +377,9 @@ class ArkViewer:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid data types {joined_invalid}, valid types are: {joined_valid}",
+                headers=self.info(stringify=True),
             )
 
-        info = self.info(stringify=True)
         data = {}
 
         for datatype in datatypes.dtypes:
@@ -349,11 +388,11 @@ class ArkViewer:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Datatype {datatype} not cached yet!",
-                    headers=info,
+                    headers=self.info(stringify=True),
                 )
             data[datatype] = target_data
 
-        return JSONResponse(content={**data, **info})
+        return JSONResponse(content={**data, **self.info()})
 
     @router.get("/stats")
     async def get_system_info(self, request: Request):
@@ -364,4 +403,6 @@ class ArkViewer:
             return JSONResponse(content={**base, **stats})
         except Exception as e:
             log.exception("Failed to get system info!")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(
+                status_code=500, detail=str(e), headers=self.info(stringify=True)
+            )

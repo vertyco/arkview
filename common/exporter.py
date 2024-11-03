@@ -129,45 +129,49 @@ async def process_export():
         cache.syncing = False
 
     try:
-        cache.reading = True
         await load_outputs()
     except Exception as e:
         log.error("Failed to load outputs", exc_info=e)
-    finally:
-        cache.reading = False
 
 
 async def load_outputs(target: str = ""):
     global cache
-    for export_file in cache.output_dir.iterdir():
-        key = export_file.name.replace("ASV_", "").replace(".json", "").lower().strip()
+
+    files = list(cache.output_dir.glob("*.json"))
+    for export_file in files:
+        key = export_file.stem.replace("ASV_", "").lower().strip()
         if target and target.lower() != key:
             continue
 
-        tries = 0
-        data = None
-
-        while tries < 3:
-            tries += 1
-            try:
-                raw_file = export_file.read_bytes()
-                data = await asyncio.to_thread(orjson.loads, raw_file)
-                break
-            except (orjson.JSONDecodeError, UnicodeDecodeError):
-                await asyncio.sleep(3)
-            except Exception as e:
-                log.warning(f"Failed to load {export_file.name}", exc_info=e)
+        # Before reading the file, make sure it is not being accessed by another process
+        waiting = 0
+        while export_file.stat().st_size == 0:
+            await asyncio.sleep(6)
+            waiting += 1
+            if waiting > 10:
                 break
 
-        if not data:
+        if waiting > 10:
+            log.error(f"Failed to load {export_file.name}")
             continue
 
-        def _precache(data):
+        raw_file = export_file.read_bytes()
+
+        log.debug(f"Loading {export_file.name}")
+        try:
+            dump = orjson.loads(raw_file)
+        except Exception as e:
+            log.error(f"Failed to load {export_file.name}", exc_info=e)
+            continue
+
+        if not dump:
+            log.error(f"No data found in {export_file.name}")
+            continue
+
+        def _precache(data: dict):
             first_run = not cache.tribelog_buffer
-            if first_run:
-                log.info("Pre-caching tribe logs")
             new_tribelog_payload = []
-            for i in data:
+            for i in data["data"]:
                 if "logs" not in i:
                     continue
                 tribe_id = i.get("tribeid")
@@ -184,16 +188,17 @@ async def load_outputs(target: str = ""):
                 if new_logs:
                     i["logs"] = new_logs
                     new_tribelog_payload.append(i)
-            data = new_tribelog_payload
+            if first_run:
+                log.info(
+                    f"First run, pre-cached {len(cache.tribelog_buffer)} tribe logs"
+                )
+            data["data"] = new_tribelog_payload
             return data
 
         if key == "tribelogs":
-            data = await asyncio.to_thread(_precache, data)
+            dump = await asyncio.to_thread(_precache, dump)
 
         try:
-            cache.exports[key] = data
-            log.info(f"Cached {export_file.name}")
+            cache.exports[key] = dump
         except Exception as e:
-            log.error(f"Failed to cache export: {type(data)}", exc_info=e)
-
-    cache.last_output = int(datetime.now().timestamp())
+            log.error(f"Failed to cache export: {type(dump)}", exc_info=e)
