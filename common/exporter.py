@@ -152,7 +152,9 @@ async def load_outputs(target: str = ""):
                 break
 
         if waiting > 10:
-            log.error(f"Failed to load {export_file.name}")
+            log.error(
+                f"Failed to load {export_file.name}, waited too long for it to be written"
+            )
             continue
 
         raw_file = export_file.read_bytes()

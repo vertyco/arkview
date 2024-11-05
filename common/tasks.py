@@ -129,6 +129,9 @@ class ArkViewer:
             if not Path(cache.map_file).exists():
                 log.error("Map file does not exist!")
                 return False
+            if not Path(cache.map_file).is_file():
+                log.error("Map path must be a file, not a directory!")
+                return False
             else:
                 cache.map_file = Path(cache.map_file)
 
@@ -350,8 +353,8 @@ class ArkViewer:
         if datatype.lower() not in VALID_DATATYPES:
             joined = ", ".join(VALID_DATATYPES)
             raise HTTPException(
-                status_code=400,
-                detail=f"Invalid data type, valid types are: {joined}",
+                status_code=422,
+                detail=f"Invalid datatype, valid types are: {joined}",
                 headers=self.info(stringify=True),
             )
         if datatype.lower() == "all":
