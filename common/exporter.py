@@ -55,6 +55,7 @@ async def process_export():
     for path in cache.output_dir.glob("*.json"):
         if path.stat().st_mtime > cache.last_export:
             cache.last_export = path.stat().st_mtime
+            break
 
     # Threads should be equal to half of the total CPU threads
     available_cores = os.cpu_count() or 1

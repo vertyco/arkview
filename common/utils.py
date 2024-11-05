@@ -88,7 +88,7 @@ def format_sys_info() -> dict:
 
     # -/-/-/CPU-/-/-/
     cpu_count = psutil.cpu_count()  # Int
-    cpu_perc = psutil.cpu_percent(interval=0.5, percpu=True)  # List of floats
+    cpu_perc = psutil.cpu_percent(interval=0.1, percpu=True)  # List of floats
     cpu_freq = psutil.cpu_freq(percpu=True)  # List of Objects
     cpu_info = cpuinfo.get_cpu_info()  # Dict
     cpu_type = cpu_info["brand_raw"] if "brand_raw" in cpu_info else "Unknown"
