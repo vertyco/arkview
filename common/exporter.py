@@ -51,8 +51,10 @@ async def process_export():
 
         log.info("Map file has been updated, re-exporting")
 
-    # Run exporter
-    cache.last_export = map_file_modified
+    # last export is the last modified time of the first json file in the output directory
+    for path in cache.output_dir.glob("*.json"):
+        if path.stat().st_mtime > cache.last_export:
+            cache.last_export = path.stat().st_mtime
 
     # Threads should be equal to half of the total CPU threads
     available_cores = os.cpu_count() or 1
