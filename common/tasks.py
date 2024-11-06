@@ -97,7 +97,13 @@ class ArkViewer:
             priority = "LOW"
         cache.priority = priority
 
+        cpus = os.cpu_count() or 1
         cache.threads = settings.getint("Threads", fallback=2)
+        if cache.threads > cpus:
+            log.warning(
+                f"Threads set to {cache.threads} but only {cpus} available, defaulting to {cpus}"
+            )
+            cache.threads = cpus
 
         cache.api_key = settings.get("APIKey", fallback="").replace('"', "")
         if not cache.api_key:
@@ -176,7 +182,7 @@ class ArkViewer:
             f"Output Dir: {cache.output_dir}\n"
             f"Working Dir: {os.getcwd()}\n"
             f"Debug: {cache.debug}\n"
-            f"Using Cores: {cache.threads}/{os.cpu_count()}\n"
+            f"Using Cores: {cache.threads}/{cpus}\n"
             f"Priority: {cache.priority}\n"
             f"OS: {'Windows' if IS_WINDOWS else 'Linux'}\n"
             f"LD Lib: {os.environ.get('LD_LIBRARY_PATH')}\n"
@@ -198,6 +204,9 @@ class ArkViewer:
         if not cache.exe_file.exists():
             log.error("Exporter does not exist!")
             return False
+
+        if cpus < 4:
+            log.warning("Server has less than 4 cores, performance may be impacted!")
 
         if IS_WINDOWS:
             scheduler.add_job(

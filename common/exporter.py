@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import subprocess
-from datetime import datetime
 from hashlib import md5
 from pathlib import Path
 
@@ -30,7 +29,17 @@ async def export_loop():
 
 async def process_export():
     global cache
-    now = datetime.now().timestamp()
+    if cache.syncing:
+        return
+    try:
+        cache.syncing = True
+        await _process_export()
+    finally:
+        cache.syncing = False
+
+
+async def _process_export():
+    global cache
     if not cache.map_file.exists():
         return
     if not cache.exe_file.exists():
@@ -42,13 +51,9 @@ async def process_export():
     map_file_modified = cache.map_file.stat().st_mtime
 
     if cache.last_export:
-        # Run a couple checks to see if we don't need to export
-        delta = now - cache.last_export
-        if cache.last_export >= map_file_modified and delta < 1800:
-            # If the map file hasn't been modified and it's been less than 30 minutes, don't export
-            await asyncio.sleep(5)
+        if int(cache.last_export) == int(map_file_modified):
+            # Map file hasnt updated yet
             return
-
         log.info("Map file has been updated, re-exporting")
 
     # last export is the last modified time of the first json file in the output directory
@@ -101,7 +106,6 @@ async def process_export():
         log.debug(f"Running: {command}")
 
     try:
-        cache.syncing = True
         if IS_WINDOWS:
             os.system(" ".join(command))
         else:
@@ -128,8 +132,6 @@ async def process_export():
         log.error(f"Standard Error: {e.stderr}")
     except Exception as e:
         log.error("Export failed", exc_info=e)
-    finally:
-        cache.syncing = False
 
     try:
         await load_outputs()
