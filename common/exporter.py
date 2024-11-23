@@ -56,11 +56,10 @@ async def _process_export():
             return
         log.info("Map file has been updated, re-exporting")
 
-    # last export is the last modified time of the first json file in the output directory
-    for path in cache.output_dir.glob("*.json"):
-        if path.stat().st_mtime > cache.last_export:
-            cache.last_export = path.stat().st_mtime
-            break
+    asv_players = cache.output_dir / "ASV_Players.json"
+    if asv_players.exists():
+        # Just use this file to check if the export is up to date
+        cache.last_export = asv_players.stat().st_mtime
 
     # Threads should be equal to half of the total CPU threads
     available_cores = os.cpu_count() or 1

@@ -39,7 +39,7 @@ class Manager:
         [task.cancel() for task in tasks]
 
         log.info("Cancelling outstanding tasks")
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(*tasks, return_exceptions=False)
 
         log.info("Shutting down asyncgens...")
         try:
