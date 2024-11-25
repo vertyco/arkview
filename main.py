@@ -69,7 +69,6 @@ class Manager:
             if not loop.is_closed():
                 loop.run_until_complete(arkview.shutdown())
                 loop.run_until_complete(loop.shutdown_asyncgens())
-                loop.run_until_complete(asyncio.sleep(1))
                 asyncio.set_event_loop(None)
                 loop.stop()
                 loop.close()

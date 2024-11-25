@@ -41,25 +41,24 @@ async def process_export():
 async def _process_export():
     global cache
     if not cache.map_file.exists():
+        log.error("No map file found")
         return
     if not cache.exe_file.exists():
+        log.error("No export executable found")
         return
     if cache.cluster_dir and not cache.cluster_dir.exists():
-        return
+        log.warning("Cluster is set but the path specified ")
     cache.output_dir.mkdir(exist_ok=True)
 
     map_file_modified = cache.map_file.stat().st_mtime
 
-    if cache.last_export:
-        if int(cache.last_export) == int(map_file_modified):
+    if cache.map_last_modified:
+        if int(cache.map_last_modified) == int(map_file_modified):
             # Map file hasnt updated yet
             return
         log.info("Map file has been updated, re-exporting")
 
-    asv_players = cache.output_dir / "ASV_Players.json"
-    if asv_players.exists():
-        # Just use this file to check if the export is up to date
-        cache.last_export = asv_players.stat().st_mtime
+    cache.map_last_modified = map_file_modified
 
     # Threads should be equal to half of the total CPU threads
     available_cores = os.cpu_count() or 1
@@ -114,16 +113,18 @@ async def _process_export():
             cache.output_dir.chmod(0o777)
             result = subprocess.run(
                 command,
-                check=True,
-                text=True,
-                capture_output=True,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                cwd=str(cache.root_dir),
             )
-            if stdout := result.stdout:
+            if stdout := result.stdout.decode("utf-8", errors="ignore"):
                 log.info(stdout)
-            if stderr := result.stderr:
+            if stderr := result.stderr.decode("utf-8", errors="ignore"):
                 log.info(stderr)
         await asyncio.sleep(5)
-        await wait_for_process("ASVExport")
+        await wait_for_process(
+            "ASVExport"
+        )  # Waits for the process with that name to close
         await asyncio.sleep(5)
     except subprocess.CalledProcessError as e:
         log.error("Export failed", exc_info=e)
@@ -140,6 +141,10 @@ async def _process_export():
 
 async def load_outputs(target: str = ""):
     global cache
+
+    asv_players = cache.output_dir / "ASV_Players.json"
+    if asv_players.exists():
+        cache.last_export = asv_players.stat().st_mtime
 
     files = list(cache.output_dir.glob("*.json"))
     for export_file in files:

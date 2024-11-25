@@ -35,6 +35,7 @@ class Cache(BaseModel):
     syncing: bool = False
     tribelog_buffer: set[str] = set()
     last_export: int = 0
+    map_last_modified: int = 0
 
 
 cache = Cache(

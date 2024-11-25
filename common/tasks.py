@@ -15,7 +15,7 @@ from fastapi_utils.cbv import cbv
 from fastapi_utils.inferring_router import InferringRouter
 from uvicorn import Config, Server
 
-from common.constants import API_CONF, DEFAULT_CONF, IS_EXE, IS_WINDOWS, VALID_DATATYPES
+from common.constants import DEFAULT_CONF, IS_EXE, IS_WINDOWS, VALID_DATATYPES
 from common.exporter import export_loop, load_outputs, process_export
 from common.logger import init_sentry
 from common.models import Banlist, Dtypes, cache  # noqa
@@ -238,12 +238,16 @@ class ArkViewer:
             host=host,
             port=cache.port,
             log_level="debug" if cache.debug else "info",
-            log_config=API_CONF,
+            # log_config=API_CONF,
+            log_config=None,
             workers=1,
         )
         server = Server(config)
         multiprocessing.freeze_support()
-        await server.serve()
+        try:
+            await server.serve()
+        except (KeyboardInterrupt, RuntimeError):
+            pass
 
     async def check_keys(self, request: Request):
         global cache

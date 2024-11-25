@@ -8,63 +8,30 @@ from colorama import Back, Fore, Style
 from sentry_sdk.integrations.aiohttp import AioHttpIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
-datefmt = "%m-%d-%Y %I:%M:%S %p"
-log_format = logging.Formatter(
-    "%(asctime)s - %(levelname)s - %(message)s", datefmt=datefmt
-)
-
-# Debug log
-debug_file_handler = RotatingFileHandler(
-    "debug-logs.log",
-    mode="a",
-    maxBytes=1 * 1024 * 1024,
-    backupCount=0,
-)
-debug_file_handler.setFormatter(log_format)
-debug_file_handler.setLevel(logging.DEBUG)
-
-# Info log
-info_file_handler = RotatingFileHandler(
-    "logs.log",
-    mode="a",
-    maxBytes=1 * 1024 * 1024,
-    backupCount=0,
-)
-info_file_handler.setFormatter(log_format)
-info_file_handler.setLevel(logging.INFO)
+green = Fore.LIGHTGREEN_EX + Style.BRIGHT
+blue = Fore.LIGHTBLUE_EX + Style.BRIGHT
+yellow = Fore.YELLOW + Style.BRIGHT
+red = Fore.LIGHTRED_EX + Style.BRIGHT
+critical = Fore.LIGHTYELLOW_EX + Back.RED + Style.BRIGHT
+reset = Style.RESET_ALL + Fore.RESET + Back.RESET
+timestamp = Fore.WHITE + "[%(asctime)s]" + reset
+module = Fore.LIGHTBLACK_EX + Style.BRIGHT + "[%(name)s]" + reset
+message = Fore.WHITE + Style.BRIGHT + "%(message)s" + reset
+formats = {
+    logging.DEBUG: f"{timestamp} {green}%(levelname)s{reset}    {module}: {message}",
+    logging.INFO: f"{timestamp} {blue}%(levelname)s{reset}     {module}: {message}",
+    logging.WARNING: f"{timestamp} {yellow}%(levelname)s{reset}  {module}: {message}",
+    logging.ERROR: f"{timestamp} {red}%(levelname)s{reset}    {module}: {message}",
+    logging.CRITICAL: f"{timestamp} {critical}%(levelname)s{reset} {module}: {message}",
+}
+dt_fmt = "%Y-%m-%d %I:%M:%S %p"
+colorama.init(autoreset=True)
 
 
 class PrettyFormatter(logging.Formatter):
-    colorama.init(autoreset=True)
-    fmt = "%(asctime)s - %(levelname)s - %(message)s"
-    formats = {
-        logging.DEBUG: Fore.LIGHTGREEN_EX
-        + Style.BRIGHT
-        + fmt
-        + Style.RESET_ALL
-        + Fore.RESET,
-        logging.INFO: Fore.LIGHTWHITE_EX
-        + Style.BRIGHT
-        + fmt
-        + Style.RESET_ALL
-        + Fore.RESET,
-        logging.WARNING: Fore.YELLOW
-        + Style.BRIGHT
-        + fmt
-        + Style.RESET_ALL
-        + Fore.RESET,
-        logging.ERROR: Fore.RED + Style.BRIGHT + fmt + Style.RESET_ALL + Fore.RESET,
-        logging.CRITICAL: Fore.LIGHTYELLOW_EX
-        + Back.RED
-        + Style.BRIGHT
-        + fmt
-        + Style.RESET_ALL
-        + Fore.RESET,
-    }
-
     def format(self, record):
-        log_fmt = self.formats.get(record.levelno)
-        formatter = logging.Formatter(fmt=log_fmt, datefmt="%m/%d %I:%M:%S %p")
+        log_fmt = formats[record.levelno]
+        formatter = logging.Formatter(fmt=log_fmt, datefmt="%I:%M:%S %p")
         return formatter.format(record)
 
 
@@ -78,18 +45,23 @@ def init_logging():
     stdout_handler.setFormatter(PrettyFormatter())
     stdout_handler.setLevel(logging.DEBUG)
 
-    handlers = [stdout_handler]
-
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        # Running as EXE so use file log
-        pass
-    handlers.append(info_file_handler)
-    handlers.append(debug_file_handler)
+    file_handler = RotatingFileHandler(
+        "logs.log",
+        mode="a",
+        maxBytes=1 * 1024 * 1024,
+        backupCount=0,
+    )
+    file_formatter = logging.Formatter(
+        fmt="{asctime} [{levelname:<8}] {name}: {message}",
+        datefmt=dt_fmt,
+        style="{",
+    )
+    file_handler.setFormatter(file_formatter)
 
     logging.basicConfig(
         level=logging.DEBUG,
-        datefmt=datefmt,
-        handlers=handlers,
+        datefmt=dt_fmt,
+        handlers=[stdout_handler, file_handler],
     )
 
 
@@ -113,3 +85,13 @@ def init_sentry(dsn: str, version: str) -> None:
         environment=sys.platform,
         ignore_errors=[KeyboardInterrupt, RuntimeError],
     )
+
+
+if __name__ == "__main__":
+    init_logging()
+    log = logging.getLogger("test.module")
+    log.debug("This is a debug message")
+    log.info("This is an info message")
+    log.warning("This is a warning message")
+    log.error("This is an error message")
+    log.critical("This is a critical message")
