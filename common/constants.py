@@ -84,10 +84,12 @@ LOGO = r"""
 
 
 API_CONF = LOGGING_CONFIG.copy()
-API_CONF["formatters"]["access"]["fmt"] = "%(asctime)s - %(levelname)s - %(message)s"
-API_CONF["formatters"]["default"]["fmt"] = "%(asctime)s - %(levelname)s - %(message)s"
-API_CONF["formatters"]["access"]["datefmt"] = "%m/%d %I:%M:%S %p"
-API_CONF["formatters"]["default"]["datefmt"] = "%m/%d %I:%M:%S %p"
+log_fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+date_fmt = "%Y-%m-%d %I:%M:%S %p"
+API_CONF["formatters"]["access"]["fmt"] = log_fmt
+API_CONF["formatters"]["default"]["fmt"] = log_fmt
+API_CONF["formatters"]["access"]["datefmt"] = date_fmt
+API_CONF["formatters"]["default"]["datefmt"] = date_fmt
 API_CONF["handlers"]["file"] = {
     "formatter": "default",
     "class": "logging.handlers.RotatingFileHandler",
