@@ -117,7 +117,7 @@ class ArkViewer:
                 cache.cluster_dir = testdata / "solecluster_asa"
             else:
                 log.info("Using test files (ASE)")
-                cache.map_file = testdata / "map_ase" / "Ragnarok.ark"
+                cache.map_file = testdata / "map_ase" / "LostIsland.ark"
                 cache.cluster_dir = testdata / "solecluster_ase"
         else:
             if dsn := settings.get(
