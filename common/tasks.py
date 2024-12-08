@@ -133,10 +133,12 @@ class ArkViewer:
                 log.error("Map file path cannot be empty!")
                 return False
             if not Path(cache.map_file).exists():
-                log.error("Map file does not exist!")
+                log.error("Map file does not exist! %s", cache.map_file)
                 return False
             if not Path(cache.map_file).is_file():
-                log.error("Map path must be a file, not a directory!")
+                log.error(
+                    "Map path must be a file, not a directory! %s", cache.map_file
+                )
                 return False
             else:
                 cache.map_file = Path(cache.map_file)
@@ -149,10 +151,10 @@ class ArkViewer:
                     "Cluster dir has not been set, some features will be unavailable!"
                 )
             elif not Path(cache.cluster_dir).exists():
-                log.error("Cluster dir does not exist!")
+                log.error("Cluster dir does not exist! %s", cache.cluster_dir)
                 return False
             elif not Path(cache.cluster_dir).is_dir():
-                log.error("Cluster path is not a directory!")
+                log.error("Cluster path is not a directory! %s", cache.cluster_dir)
                 return False
             else:
                 cache.cluster_dir = Path(cache.cluster_dir)
