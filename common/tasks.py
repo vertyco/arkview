@@ -417,10 +417,15 @@ class ArkViewer:
 
         def _exe():
             # First map all tames to tribes
+            found = set()
             tribe_tames: dict[int, list[dict]] = defaultdict(list)
             for tame in tamed["data"]:
                 if tame.get("uploadedTime") or tame["cryo"]:
                     continue
+                key = f"{tame['id']}-{tame['dinoid']}"
+                if key in found:
+                    continue
+                found.add(key)
                 tribeid = int(tame["tribeid"])
                 tribe_tames[tribeid].append(tame)
 
