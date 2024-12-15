@@ -4,6 +4,7 @@ import logging
 import multiprocessing
 import os
 import sys
+from collections import defaultdict
 from configparser import ConfigParser
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -131,6 +132,14 @@ class ArkViewer:
             cache.map_file = settings.get("MapFilePath", fallback="").replace('"', "")
             if not cache.map_file:
                 log.error("Map file path cannot be empty!")
+                return False
+            # Make sure cache.config and cache.map_file are on the same physical drive
+            if cache.config.resolve().drive != Path(cache.map_file).resolve().drive:
+                log.error(
+                    "Config file and map file must be on the same drive! %s %s",
+                    cache.config,
+                    cache.map_file,
+                )
                 return False
             if not Path(cache.map_file).exists():
                 log.error("Map file does not exist! %s", cache.map_file)
@@ -378,13 +387,56 @@ class ArkViewer:
             target_data = cache.exports.get(datatype)
             if not target_data:
                 raise HTTPException(
-                    status_code=400,
+                    status_code=404,
                     detail=f"Datatype {datatype} not cached yet!",
                     headers=self.info(stringify=True),
                 )
             data = {datatype: target_data}
 
         return JSONResponse(content={**data, **self.info()})
+
+    @router.get("/overlimit/{limit}")
+    async def get_over_limit(self, request: Request, limit: int):
+        """Get all players who's tribe has uncryod tames over the limit"""
+        await self.check_keys(request)
+        global cache
+        tamed = cache.exports.get("tamed")
+        tribes = cache.exports.get("tribes")
+        if not tamed:
+            raise HTTPException(
+                status_code=404,
+                detail="Tamed data not cached yet!",
+                headers=self.info(stringify=True),
+            )
+        if not tribes:
+            raise HTTPException(
+                status_code=404,
+                detail="Tribes data not cached yet!",
+                headers=self.info(stringify=True),
+            )
+
+        def _exe():
+            # First map all tames to tribes
+            tribe_tames: dict[int, list[dict]] = defaultdict(list)
+            for tame in tamed["data"]:
+                if tame.get("uploadedTime") or tame["cryo"]:
+                    continue
+                tribeid = int(tame["tribeid"])
+                tribe_tames[tribeid].append(tame)
+
+            over_limit: dict[str, list[dict]] = {}
+            for tribe in tribes["data"]:
+                if not tribe.get("members"):
+                    continue
+                uncryod: list[dict] = tribe_tames.get(tribe["tribeid"], [])
+                if len(uncryod) <= limit:
+                    continue
+                for member in tribe["members"]:
+                    over_limit[member["steamid"]] = uncryod
+            return over_limit
+
+        over_limit: dict[str, list[dict]] = await asyncio.to_thread(_exe)
+        return JSONResponse(content={"overlimit": over_limit, **self.info()})
 
     @router.post("/datas")
     async def get_datas(self, request: Request, datatypes: Dtypes):
@@ -409,7 +461,7 @@ class ArkViewer:
             target_data = cache.exports.get(datatype)
             if not target_data:
                 raise HTTPException(
-                    status_code=400,
+                    status_code=404,
                     detail=f"Datatype {datatype} not cached yet!",
                     headers=self.info(stringify=True),
                 )
