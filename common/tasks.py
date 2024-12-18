@@ -135,12 +135,11 @@ class ArkViewer:
                 return False
             # Make sure cache.config and cache.map_file are on the same physical drive
             if cache.config.resolve().drive != Path(cache.map_file).resolve().drive:
-                log.error(
-                    "Config file and map file must be on the same drive! %s %s",
+                log.warning(
+                    "Config file and map file should be on the same drive! %s %s",
                     cache.config,
                     cache.map_file,
                 )
-                return False
             if not Path(cache.map_file).exists():
                 log.error("Map file does not exist! %s", cache.map_file)
                 return False
