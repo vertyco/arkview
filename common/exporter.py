@@ -38,7 +38,7 @@ async def process_export():
         cache.syncing = False
 
 
-async def wipe_output_dir():
+async def wipe_output():
     global cache
     to_delete = list(cache.output_dir.glob("*.json"))
     if to_delete:
@@ -48,12 +48,16 @@ async def wipe_output_dir():
             file.unlink(missing_ok=True)
         except Exception as e:
             log.error(f"Failed to delete {file.name}", exc_info=e)
+    if cache.exports:
+        cache.exports.clear()
+        log.info("Cleared exports")
 
 
 async def _process_export():
     global cache
     if not cache.map_file.exists():
         log.warning("No map file found")
+        await wipe_output()
         return
     if not cache.exe_file.exists():
         log.warning("No export executable found")
