@@ -38,13 +38,25 @@ async def process_export():
         cache.syncing = False
 
 
+async def wipe_output_dir():
+    global cache
+    to_delete = list(cache.output_dir.glob("*.json"))
+    if to_delete:
+        log.info(f"Wiping {len(to_delete)} files from output directory")
+    for file in to_delete:
+        try:
+            file.unlink(missing_ok=True)
+        except Exception as e:
+            log.error(f"Failed to delete {file.name}", exc_info=e)
+
+
 async def _process_export():
     global cache
     if not cache.map_file.exists():
-        log.error("No map file found")
+        log.warning("No map file found")
         return
     if not cache.exe_file.exists():
-        log.error("No export executable found")
+        log.warning("No export executable found")
         return
     if cache.cluster_dir and not cache.cluster_dir.exists():
         log.warning("Cluster is set but the path specified ")
