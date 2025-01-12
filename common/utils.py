@@ -24,6 +24,18 @@ async def wait_for_process(process: str):
         await asyncio.sleep(5)
 
 
+async def wait_for_pid(pid: int):
+    def _is_running():
+        try:
+            return psutil.pid_exists(pid)
+        except psutil.NoSuchProcess:
+            return False
+
+    while await asyncio.to_thread(_is_running):
+        log.debug(f"Waiting for process {pid} to finish")
+        await asyncio.sleep(5)
+
+
 def dotnet_installed() -> bool:
     cmd = r"dotnet --list-sdks"
     is_installed = True
