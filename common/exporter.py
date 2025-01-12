@@ -9,7 +9,7 @@ import orjson
 
 from common.constants import IS_WINDOWS
 from common.models import cache  # noqa
-from common.utils import get_affinity_mask, wait_for_process
+from common.utils import get_affinity_mask, wait_for_pid
 
 log = logging.getLogger("arkview.exporter")
 
@@ -121,26 +121,35 @@ async def _process_export():
 
     try:
         if IS_WINDOWS:
-            os.system(" ".join(command))
+            process = subprocess.Popen(
+                " ".join(command),
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            pid = process.pid
         else:
             # Ensure all the paths have r/w and execute permissions
             cache.exe_file.chmod(0o777)
             cache.map_file.chmod(0o777)
             cache.output_dir.chmod(0o777)
-            result = subprocess.run(
+            process = subprocess.Popen(
                 command,
                 stderr=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 cwd=str(cache.root_dir),
             )
-            if stdout := result.stdout.decode("utf-8", errors="ignore"):
-                log.info(stdout)
-            if stderr := result.stderr.decode("utf-8", errors="ignore"):
-                log.info(stderr)
+            pid = process.pid
+
+        stdout, stderr = await asyncio.to_thread(process.communicate)
+        if stdout:
+            log.info(stdout.decode("utf-8", errors="ignore"))
+        if stderr:
+            log.error(stderr.decode("utf-8", errors="ignore"))
+
         await asyncio.sleep(5)
-        await wait_for_process(
-            "ASVExport"
-        )  # Waits for the process with that name to close
+        await wait_for_pid(pid)  # Waits for the specific PID to close
+        log.info("Export completed")
         await asyncio.sleep(5)
     except subprocess.CalledProcessError as e:
         log.error("Export failed", exc_info=e)
