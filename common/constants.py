@@ -1,3 +1,4 @@
+import copy  # added for deep copy of logging config
 import os
 import sys
 from pathlib import Path
@@ -24,6 +25,9 @@ Priority = LOW
 
 # Number of threads to use for processing (if the server's cpu has less cores than this setting, it will default to the server's cpu count)
 Threads = 2
+
+# If true, the exporter will rerun when any of the ark data files are updated
+ReprocessOnArkDataUpdate = False
 
 # If true, api will only be accessible locally (If running as python, this will cause the client to fail)
 Debug = False
@@ -83,7 +87,7 @@ LOGO = r"""
 """
 
 
-API_CONF = LOGGING_CONFIG.copy()
+API_CONF = copy.deepcopy(LOGGING_CONFIG)  # replaced shallow copy with deep copy
 log_fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 date_fmt = "%Y-%m-%d %I:%M:%S %p"
 API_CONF["formatters"]["access"]["fmt"] = log_fmt
@@ -108,7 +112,6 @@ API_CONF["loggers"]["uvicorn.access"] = {
     "level": "INFO",
     "propagate": False,
 }
-
 VALID_DATATYPES = [
     "mapstructures",
     "players",

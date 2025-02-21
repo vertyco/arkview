@@ -25,17 +25,18 @@ class Cache(BaseModel):
     threads: int = 2
     debug: bool = False
     port: int = 8000
-    map_file: str | Path = ""
-    cluster_dir: str | Path = ""
-    ban_file: str | Path = ""
+    map_file: Path = ""
+    cluster_dir: Path = ""
+    ban_file: Path = ""
     asatest: bool = True
+    reprocess_on_arkdata_update: bool = False
 
     # States/Cache
     exports: dict[str, list[dict]] = {}
     syncing: bool = False
     tribelog_buffer: set[str] = set()
-    last_export: int = 0
-    map_last_modified: int = 0
+    last_export: float = 0.0
+    map_last_modified: float = 0.0
 
 
 cache = Cache(
