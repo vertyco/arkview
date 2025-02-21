@@ -4,6 +4,7 @@ import os
 import subprocess
 import webbrowser
 from datetime import datetime
+from time import perf_counter
 
 import cpuinfo
 import psutil
@@ -11,29 +12,54 @@ import psutil
 log = logging.getLogger("arkview.common.utils")
 
 
-async def wait_for_process(process: str):
-    def _is_running():
-        try:
-            running = [p.name() for p in psutil.process_iter()]
-            return any(process in procname for procname in running)
-        except psutil.NoSuchProcess:
+async def get_process_pid(process: str) -> int | None:
+    """
+    Get the PID of a process by name
+
+    Returns:
+        int | None: The PID of the process or None if the process does not exist
+    """
+
+    def _exe():
+        for proc in psutil.process_iter():
+            if process in proc.name():
+                return proc.pid
+        return None
+
+    return await asyncio.to_thread(_exe)
+
+
+async def wait_for_process_to_exist(process: str, wait_time: int = 6) -> int | None:
+    """
+    Wait for a process to exist by name
+
+    Returns:
+        int | None: The PID of the process or None if the process does not exist
+    """
+    start = perf_counter()
+    while True:
+        pid = await get_process_pid(process)
+        if pid:
+            return pid
+        if perf_counter() - start >= wait_time:
+            return None
+        await asyncio.sleep(0.01)
+
+
+async def wait_for_pid_to_stop(pid: int, wait_time: int = 900) -> bool:
+    """
+    Wait for a process to stop by PID
+
+    Returns:
+        bool: True if the process has stopped
+    """
+    start = perf_counter()
+    while True:
+        if not psutil.pid_exists(pid):
             return True
-
-    while await asyncio.to_thread(_is_running):
-        log.debug("Waiting for ASV to export")
-        await asyncio.sleep(5)
-
-
-async def wait_for_pid(pid: int):
-    def _is_running():
-        try:
-            return psutil.pid_exists(pid)
-        except psutil.NoSuchProcess:
+        if perf_counter() - start >= wait_time:
             return False
-
-    while await asyncio.to_thread(_is_running):
-        log.debug(f"Waiting for process {pid} to finish")
-        await asyncio.sleep(5)
+        await asyncio.sleep(0.1)
 
 
 def dotnet_installed() -> bool:
@@ -49,10 +75,18 @@ def dotnet_installed() -> bool:
         is_installed = False
     else:
         version = res.split(" ")[0].strip()
-        log.info(f"Current .NET version: {version}")
-        if version < "6.0.0":
-            is_installed = False
-        elif version > "6.9.9":
+        # Use version parsing for accurate comparison
+        from packaging.version import parse as parse_version
+
+        try:
+            if parse_version(version) < parse_version("6.0.0") or parse_version(
+                version
+            ) > parse_version("6.9.9"):
+                is_installed = False
+            else:
+                log.info(f"Current .NET version: {version}")
+        except Exception as e:
+            log.error("Failed to parse .NET version", exc_info=e)
             is_installed = False
     windows = True if "C:\\Users" in os.environ.get("USERPROFILE", "") else False
     if not is_installed:

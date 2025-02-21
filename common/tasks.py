@@ -32,6 +32,22 @@ parser = ConfigParser()
 log = logging.getLogger("arkview")
 
 
+# Add helper to extract default block (comments + key) from DEFAULT_CONF
+def get_default_block(key: str) -> str:
+    lines = DEFAULT_CONF.splitlines()
+    block_lines = []
+    for i, line in enumerate(lines):
+        if line.lower().strip().startswith((key.lower() + " =", key.lower() + "=")):
+            # Include preceding comment lines if any
+            j = i - 1
+            while j >= 0 and lines[j].strip().startswith("#"):
+                block_lines.insert(0, lines[j])
+                j -= 1
+            block_lines.append(line)
+            break
+    return "\n".join(block_lines)
+
+
 @cbv(router)
 class ArkViewer:
     """
@@ -45,14 +61,14 @@ class ArkViewer:
         global cache
         if not cache.config.exists():
             log.warning("No config file exists! Creating one...")
-            cache.config.write_text(DEFAULT_CONF)
+            cache.config.write_text(DEFAULT_CONF.strip())
             return False
 
         log.info(f"Reading from {cache.config}")
         parser.read(str(cache.config))
         settings = parser["Settings"]
 
-        # Make sure all settings are present
+        # Make sure all settings are present, adding missing keys to existing config
         required = [
             "Port",
             "BanListFile",
@@ -60,26 +76,23 @@ class ArkViewer:
             "ClusterFolderPath",
             "Priority",
             "Threads",
+            "ReprocessOnArkDataUpdate",
             "Debug",
             "DSN",
             "APIKey",
         ]
-        # We want to update the config file with the default values if they're missing
-        for key in required:
-            if key in settings:
-                continue
-            # Rename the current config file to `config.ini.old`
-            cache.config.rename(cache.config.with_suffix(".old"))
-            # Write the default config to a new file
-            cache.config.write_text(DEFAULT_CONF.strip())
+        missing = [key for key in required if key not in settings]
+        if missing:
             log.warning(
-                (
-                    "ArkViewer has settings missing from your config file!\n"
-                    "Your current config file has been renamed to `config.old` and a new one has been created.\n"
-                    "Please fill in the missing settings and restart the application."
-                )
+                "Missing settings in config file: %s. Updating config with defaults.",
+                ", ".join(missing),
             )
-            return False
+            with cache.config.open("a", encoding="utf-8") as cf:
+                for key in missing:
+                    block = get_default_block(key)
+                    cf.write("\n" + block + "\n")
+            parser.read(str(cache.config))
+            settings = parser["Settings"]
 
         parsed = [f"{k}: {v}\n" for k, v in settings.items()]
         log.info(f"Parsed settings\n{''.join(parsed)}")
@@ -91,6 +104,9 @@ class ArkViewer:
             log.setLevel(logging.INFO)
         cache.asatest = settings.getboolean("ASATest", fallback=False)
         cache.port = settings.getint("Port", fallback=8000)
+        cache.reprocess_on_arkdata_update = settings.getboolean(
+            "ReprocessOnArkDataUpdate", fallback=False
+        )
 
         priority = settings.get("Priority", fallback="NORMAL").upper()
         if priority not in ["LOW", "BELOWNORMAL", "NORMAL", "ABOVENORMAL", "HIGH"]:
@@ -129,12 +145,14 @@ class ArkViewer:
                 if dsn.strip():
                     init_sentry(dsn=dsn.strip(), version=VERSION)
 
-            cache.map_file = settings.get("MapFilePath", fallback="").replace('"', "")
-            if not cache.map_file:
+            map_file = settings.get("MapFilePath", fallback="").replace('"', "")
+            if not map_file:
                 log.error("Map file path cannot be empty!")
                 return False
+
+            cache.map_file = Path(map_file)
             # Make sure cache.config and cache.map_file are on the same physical drive
-            if cache.config.resolve().drive != Path(cache.map_file).resolve().drive:
+            if cache.config.resolve().drive != cache.map_file.resolve().drive:
                 log.warning(
                     "Config file and map file should be on the same drive! %s %s",
                     cache.config,
@@ -151,21 +169,21 @@ class ArkViewer:
             else:
                 cache.map_file = Path(cache.map_file)
 
-            cache.cluster_dir = settings.get("ClusterFolderPath", fallback="").replace(
+            cluster_dir = settings.get("ClusterFolderPath", fallback="").replace(
                 '"', ""
             )
-            if not cache.cluster_dir:
+            if not cluster_dir:
                 log.warning(
                     "Cluster dir has not been set, some features will be unavailable!"
                 )
-            elif not Path(cache.cluster_dir).exists():
-                log.error("Cluster dir does not exist! %s", cache.cluster_dir)
+            elif not Path(cluster_dir).exists():
+                log.error("Cluster dir was set but does not exist! %s", cluster_dir)
                 return False
-            elif not Path(cache.cluster_dir).is_dir():
-                log.error("Cluster path is not a directory! %s", cache.cluster_dir)
+            elif not Path(cluster_dir).is_dir():
+                log.error("Cluster path is not a directory! %s", cluster_dir)
                 return False
             else:
-                cache.cluster_dir = Path(cache.cluster_dir)
+                cache.cluster_dir = Path(cluster_dir)
 
             ban_file = settings.get("BanListFile", fallback="").replace('"', "")
             if ban_file:
