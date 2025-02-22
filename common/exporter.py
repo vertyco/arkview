@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 from hashlib import md5
+from time import perf_counter
 
 import orjson
 
@@ -34,18 +35,30 @@ async def scan_cluster_dir() -> bool:
             if file.suffix:
                 continue
             last_file_states[file.name] = int(file.stat().st_mtime)
+        log.info(f"Initialized {len(last_file_states)} files in cluster directory")
         return False
+
     # Check if any file has been modified
     modified = False
+    current_files = set()
     for file in cache.cluster_dir.glob("*"):
         if file.suffix:
             continue
+        current_files.add(file.name)
         if file.name not in last_file_states:
             last_file_states[file.name] = int(file.stat().st_mtime)
+            modified = True
             continue
         if last_file_states[file.name] != int(file.stat().st_mtime):
             modified = True
             break
+
+    # Check if any file has been deleted
+    for file in list(last_file_states.keys()):
+        if file not in current_files:
+            del last_file_states[file]
+            modified = True
+
     return modified
 
 
@@ -130,13 +143,13 @@ async def _process_export():
     cache.map_last_modified = map_file_modified
 
     # Threads should be equal to half of the total CPU threads
-    available_cores = os.cpu_count() or 1
-    threads = min(available_cores, cache.threads)
+    available_cores = os.cpu_count() or 2
+    threads = max(min(available_cores, cache.threads), 2)
     priority = cache.priority  # LOW, BELOWNORMAL, NORMAL, ABOVENORMAL, HIGH
 
     # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
-    # ASVExport.exe all "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\map_ase\Ragnarok.ark" "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\solecluster_ase\" "C:\Users\Vert\Desktop\output\"
-    # ASVExport.exe all "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\map_asa\TheIsland_WP.ark" "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\solecluster_asa\" "C:\Users\Vert\Desktop\output\"
+    # start ASVExport.exe all "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\map_ase\Ragnarok.ark" "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\solecluster_ase\" "C:\Users\Vert\Desktop\output\"
+    # start ASVExport.exe all "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\map_asa\TheIsland_WP.ark" "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\solecluster_asa\" "C:\Users\Vert\Desktop\output\"
     if IS_WINDOWS:
         mask = utils.get_affinity_mask(threads)
         command = [
@@ -194,10 +207,12 @@ async def _process_export():
         if not pid:
             log.error("Failed to start export process")
             return
+        start = perf_counter()
         log.info(f"Export process started with PID {pid}")
         # Now wait for it to stop
         await utils.wait_for_pid_to_stop(pid)
-        log.info("Export completed")
+        seconds = int(perf_counter() - start)
+        log.info("Export completed in %s seconds", seconds)
     except subprocess.CalledProcessError as e:
         log.error("Export failed", exc_info=e)
         log.error(f"Standard Output: {e.stdout}")
