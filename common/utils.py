@@ -65,29 +65,51 @@ async def wait_for_pid_to_stop(pid: int, wait_time: int = 900) -> bool:
 def dotnet_installed() -> bool:
     cmd = r"dotnet --list-sdks"
     is_installed = True
-    res = (
-        subprocess.run(["powershell", cmd], stdout=subprocess.PIPE)
-        .stdout.decode("utf-8")
-        .strip()
-    )
-    log.debug(res)
-    if "not recognized as the name of a cmdlet" in res:
-        is_installed = False
-    else:
-        version = res.split(" ")[0].strip()
-        # Use version parsing for accurate comparison
-        from packaging.version import parse as parse_version
-
-        try:
-            if parse_version(version) < parse_version("6.0.0") or parse_version(
-                version
-            ) > parse_version("6.9.9"):
-                is_installed = False
-            else:
-                log.info(f"Current .NET version: {version}")
-        except Exception as e:
-            log.error("Failed to parse .NET version", exc_info=e)
+    try:
+        res = (
+            subprocess.run(
+                ["powershell", cmd],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=10,
+            )
+            .stdout.decode("utf-8")
+            .strip()
+        )
+        log.debug(res)
+        if "not recognized as the name of a cmdlet" in res:
             is_installed = False
+        else:
+            # Look for any SDK version line
+            sdk_lines = [line for line in res.splitlines() if line.strip()]
+            if not sdk_lines:
+                is_installed = False
+                log.error("No .NET SDK versions found")
+            else:
+                version = sdk_lines[0].split(" ")[0].strip()
+                # Use version parsing for accurate comparison
+                from packaging.version import parse as parse_version
+
+                try:
+                    if parse_version(version) < parse_version("6.0.0") or parse_version(
+                        version
+                    ) > parse_version("6.9.9"):
+                        is_installed = False
+                        log.error(
+                            f".NET version {version} is not compatible (requires 6.0.0 - 6.9.9)"
+                        )
+                    else:
+                        log.info(f"Current .NET version: {version}")
+                except Exception as e:
+                    log.error("Failed to parse .NET version", exc_info=e)
+                    is_installed = False
+    except subprocess.TimeoutExpired:
+        log.error("Timeout checking .NET version")
+        is_installed = False
+    except Exception as e:
+        log.error("Failed to check .NET installation", exc_info=e)
+        is_installed = False
+
     windows = True if "C:\\Users" in os.environ.get("USERPROFILE", "") else False
     if not is_installed:
         log.critical(".NET V6.0 framework is REQUIRED!")

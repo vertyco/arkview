@@ -187,17 +187,24 @@ async def _process_export():
 
     try:
         if IS_WINDOWS:
-            os.system(" ".join(command))
+            retcode = os.system(" ".join(command))
+            if retcode != 0:
+                log.error(f"Export command returned non-zero exit code: {retcode}")
         else:
             # Ensure all the paths have r/w and execute permissions
-            cache.exe_file.chmod(0o777)
-            cache.map_file.chmod(0o777)
-            cache.output_dir.chmod(0o777)
+            try:
+                cache.exe_file.chmod(0o777)
+                cache.map_file.chmod(0o777)
+                cache.output_dir.chmod(0o777)
+            except PermissionError as e:
+                log.warning(f"Could not set permissions on files/directories: {e}")
+
             result = subprocess.run(
                 command,
                 stderr=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 cwd=str(cache.root_dir),
+                timeout=300,  # Add timeout to prevent hanging indefinitely
             )
             if stdout := result.stdout.decode("utf-8", errors="ignore"):
                 log.info(stdout)
@@ -210,9 +217,14 @@ async def _process_export():
         start = perf_counter()
         log.info(f"Export process started with PID {pid}")
         # Now wait for it to stop
-        await utils.wait_for_pid_to_stop(pid)
+        completed = await utils.wait_for_pid_to_stop(pid)
         seconds = int(perf_counter() - start)
-        log.info("Export completed in %s seconds", seconds)
+        if completed:
+            log.info("Export completed in %s seconds", seconds)
+        else:
+            log.warning(f"Export process timed out after {seconds} seconds")
+    except subprocess.TimeoutExpired:
+        log.error("Export process timed out")
     except subprocess.CalledProcessError as e:
         log.error("Export failed", exc_info=e)
         log.error(f"Standard Output: {e.stdout}")
