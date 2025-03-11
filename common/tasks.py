@@ -279,20 +279,34 @@ class ArkViewer:
 
     async def check_keys(self, request: Request):
         global cache
-        if cache.api_key and not request.headers.get(
-            "Authorization", request.headers.get("authorization")
-        ):
-            raise HTTPException(
-                status_code=405,
-                detail="No API key provided!",
-                headers=self.info(stringify=True),
+        if cache.api_key:
+            # Extract API key from Authorization header with proper handling
+            # Support both "Bearer <token>" format and direct token
+            auth_header = request.headers.get(
+                "Authorization", request.headers.get("authorization", "")
             )
-        if cache.api_key and cache.api_key != request.headers.get("Authorization"):
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid API key!",
-                headers=self.info(stringify=True),
-            )
+            token = auth_header
+
+            if auth_header.lower().startswith("bearer "):
+                token = auth_header[7:]
+
+            if not token:
+                raise HTTPException(
+                    status_code=401,
+                    detail="No API key provided!",
+                    headers=self.info(stringify=True),
+                )
+
+            if token.strip() != cache.api_key:
+                # Use constant-time comparison to prevent timing attacks
+                from hmac import compare_digest
+
+                if not compare_digest(token.strip(), cache.api_key):
+                    raise HTTPException(
+                        status_code=401,
+                        detail="Invalid API key!",
+                        headers=self.info(stringify=True),
+                    )
 
     def info(self, stringify: bool = False) -> dict:
         global cache
