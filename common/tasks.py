@@ -293,18 +293,28 @@ class ArkViewer:
                 # Filter out empty lines
                 if not line.strip():
                     continue
-                # You can customize how exporter logs are formatted
-                # For example, you might want to parse log levels and use appropriate logging methods
-                if "|ERROR|" in line:
-                    log.error(f"[Exporter] {line}")
-                elif "|WARNING|" in line or "[WARN]" in line:
-                    log.warning(f"[Exporter] {line}")
-                elif "|INFO|" in line:
-                    log.info(f"[Exporter] {line}")
-                elif "|DEBUG|" in line:
-                    log.debug(f"[Exporter] {line}")
+
+                # Parse the log format: timestamp|LEVEL|message
+                parts = line.strip().split("|", 2)
+                if len(parts) >= 3:
+                    _, level, message = parts
+                    level = level.upper()
+
+                    # Use appropriate logging level based on parsed level
+                    if level == "ERROR":
+                        log.error(f"[Exporter] {message}")
+                    elif level == "WARNING" or level == "WARN":
+                        log.warning(f"[Exporter] {message}")
+                    elif level == "INFO":
+                        log.info(f"[Exporter] {message}")
+                    elif level == "DEBUG":
+                        log.debug(f"[Exporter] {message}")
+                    else:
+                        log.info(f"[Exporter] {line}")
                 else:
+                    # Fallback for lines that don't match expected format
                     log.info(f"[Exporter] {line}")
+
         except FileNotFoundError:
             log.error(f"Exporter log file not found at {EXPORTER_LOGS}")
         except asyncio.CancelledError:
