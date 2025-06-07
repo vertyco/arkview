@@ -12,9 +12,11 @@ DEFAULT_CONF = """
 Port = 8000
 
 # Direct path to the .ark map file
+# IMPORTANT: Path must only contain letters, numbers, and underscores (no spaces or special characters)
 MapFilePath =
 
 # (Optional): Direct path to the solecluster folder
+# IMPORTANT: Path must only contain letters, numbers, and underscores (no spaces or special characters)
 ClusterFolderPath =
 
 # (Optional): Direct path to BanList.txt file
@@ -54,6 +56,9 @@ FILE_NAME = "ASVExport.exe" if IS_WINDOWS else "ASVExport.dll"
 EXE_FILE = (
     Path(os.path.abspath(os.path.dirname(__file__))).parent / "exporter" / FILE_NAME
 )
+EXPORTER_LOGS = EXE_FILE.parent / "asvlog.log"
+if not EXPORTER_LOGS.exists():
+    EXPORTER_LOGS.touch()
 
 CONFIG = ROOT_DIR / "config.ini"
 if not CONFIG.exists():
