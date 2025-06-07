@@ -58,7 +58,7 @@ EXE_FILE = (
 )
 EXPORTER_LOGS = EXE_FILE.parent / "asvlog.log"
 if not EXPORTER_LOGS.exists():
-    EXPORTER_LOGS.touch()
+    EXPORTER_LOGS.touch(mode=0o777)
 
 CONFIG = ROOT_DIR / "config.ini"
 if not CONFIG.exists():
