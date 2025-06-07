@@ -1,15 +1,65 @@
 import asyncio
 import logging
 import os
+import re
 import subprocess
+import typing as t
 import webbrowser
 from datetime import datetime
+from pathlib import Path
 from time import perf_counter
 
 import cpuinfo
 import psutil
 
 log = logging.getLogger("arkview.common.utils")
+
+
+# Add new path validation function
+def validate_path(path: Path) -> bool:
+    """
+    Validate that a path contains only alphanumeric characters, underscores,
+    and standard path separators (no spaces or special characters).
+
+    Args:
+        path: The path to validate
+
+    Returns:
+        bool: True if the path is valid, False otherwise
+    """
+    # Convert to string for validation
+    path_str = str(path)
+
+    # Check for spaces
+    if " " in path_str:
+        return False
+
+    # Build regex pattern allowing only alphanumeric, underscore, dot, colon, slash, backslash
+    # This allows standard path components like C:\ and path separators / and \
+    pattern = r"^[a-zA-Z0-9_\.:/\\]+"
+
+    return bool(re.match(pattern, path_str))
+
+
+async def follow_logs(path: Path, sleep: float = 0.1) -> t.AsyncGenerator[str, None]:
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            file.seek(0, os.SEEK_END)  # Move to the end of the file
+            while True:
+                try:
+                    line: str = await asyncio.to_thread(file.readline)
+                    if line and line.strip():
+                        # Check if the line is empty or contains only whitespace
+                        yield line.strip()
+                except Exception as e:
+                    log.error("Error reading log file", exc_info=e)
+                    await asyncio.sleep(1)
+                await asyncio.sleep(sleep)
+    except asyncio.CancelledError:
+        pass
+    return
 
 
 async def get_process_pid(process: str) -> int | None:

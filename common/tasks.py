@@ -16,13 +16,19 @@ from fastapi_utils.cbv import cbv
 from fastapi_utils.inferring_router import InferringRouter
 from uvicorn import Config, Server
 
-from common.constants import DEFAULT_CONF, IS_EXE, IS_WINDOWS, VALID_DATATYPES
+from common.constants import (
+    DEFAULT_CONF,
+    EXPORTER_LOGS,
+    IS_EXE,
+    IS_WINDOWS,
+    VALID_DATATYPES,
+)
 from common.exporter import export_loop, load_outputs, process_export
 from common.logger import init_sentry
 from common.models import Banlist, Dtypes, cache  # noqa
 from common.scheduler import scheduler
 from common.statusbar import status_bar
-from common.utils import dotnet_installed, format_sys_info
+from common.utils import dotnet_installed, follow_logs, format_sys_info, validate_path
 from common.version import VERSION
 
 api = FastAPI()
@@ -151,6 +157,15 @@ class ArkViewer:
                 return False
 
             cache.map_file = Path(map_file)
+
+            # Validate map file path
+            if not validate_path(cache.map_file):
+                log.error(
+                    "Map file path contains invalid characters! Path must only contain letters, numbers, and underscores (no spaces or special characters): %s",
+                    cache.map_file,
+                )
+                return False
+
             # Make sure cache.config and cache.map_file are on the same physical drive
             if cache.config.resolve().drive != cache.map_file.resolve().drive:
                 log.warning(
@@ -184,6 +199,14 @@ class ArkViewer:
                 return False
             else:
                 cache.cluster_dir = Path(cluster_dir)
+
+                # Validate cluster directory path
+                if not validate_path(cache.cluster_dir):
+                    log.error(
+                        "Cluster directory path contains invalid characters! Path must only contain letters, numbers, and underscores (no spaces or special characters): %s",
+                        cache.cluster_dir,
+                    )
+                    return False
 
             ban_file = settings.get("BanListFile", fallback="").replace('"', "")
             if ban_file:
@@ -248,11 +271,46 @@ class ArkViewer:
         else:
             asyncio.create_task(export_loop(), name="export_loop")
 
+        # Start the exporter log tailing task
+        if EXPORTER_LOGS.exists():
+            asyncio.create_task(self.tail_exporter_logs(), name="exporter_logs")
+        else:
+            log.warning(
+                f"Exporter log file not found at {EXPORTER_LOGS}, log tailing will be disabled"
+            )
+
         asyncio.create_task(self.server(), name="arkview_server")
         asyncio.create_task(load_outputs(), name="load_outputs")
         if IS_WINDOWS and IS_EXE:
             asyncio.create_task(status_bar(), name="status_bar")
         return True
+
+    async def tail_exporter_logs(self):
+        """Follow the exporter logs and add them to the application logs."""
+        try:
+            log.info(f"Starting to tail exporter logs at {EXPORTER_LOGS}")
+            async for line in follow_logs(EXPORTER_LOGS):
+                # Filter out empty lines
+                if not line.strip():
+                    continue
+                # You can customize how exporter logs are formatted
+                # For example, you might want to parse log levels and use appropriate logging methods
+                if "|ERROR|" in line:
+                    log.error(f"[Exporter] {line}")
+                elif "|WARNING|" in line or "[WARN]" in line:
+                    log.warning(f"[Exporter] {line}")
+                elif "|INFO|" in line:
+                    log.info(f"[Exporter] {line}")
+                elif "|DEBUG|" in line:
+                    log.debug(f"[Exporter] {line}")
+                else:
+                    log.info(f"[Exporter] {line}")
+        except FileNotFoundError:
+            log.error(f"Exporter log file not found at {EXPORTER_LOGS}")
+        except asyncio.CancelledError:
+            log.info("Exporter log tailing task cancelled")
+        except Exception as e:
+            log.error("Error tailing exporter logs", exc_info=e)
 
     async def server(self):
         global cache
