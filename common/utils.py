@@ -72,8 +72,11 @@ async def get_process_pid(process: str) -> int | None:
 
     def _exe():
         for proc in psutil.process_iter():
-            if process in proc.name():
-                return proc.pid
+            try:
+                if process in proc.name():
+                    return proc.pid
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
         return None
 
     return await asyncio.to_thread(_exe)
