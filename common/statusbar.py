@@ -12,9 +12,13 @@ async def status_bar():
     await asyncio.sleep(5)
     global cache
     bar_cycle = cycle(BAR)
-    path = Path(str(cache.map_file))
     while True:
-        cmd = f"title ArkViewer {VERSION} - {path.stem} {next(bar_cycle)}"
+        current_map = cache.map_file
+        current_path = Path(str(current_map)) if current_map else None
+        title = f"title ArkViewer {VERSION}"
+        if current_path:
+            title += f" - {current_path.stem}"
+        cmd = f"{title} {next(bar_cycle)}"
         if cache.syncing:
             cmd += " [Syncing...]"
         os.system(cmd)

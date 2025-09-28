@@ -75,16 +75,20 @@ def init_sentry(dsn: str, version: str) -> None:
     version: str
         The version of the application.
     """
-    sentry_sdk.init(
-        dsn=dsn,
-        integrations=[
-            AioHttpIntegration(),
-            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
-        ],
-        release=version,
-        environment=sys.platform,
-        ignore_errors=[KeyboardInterrupt, RuntimeError],
-    )
+    try:
+        sentry_sdk.init(
+            dsn=dsn,
+            integrations=[
+                AioHttpIntegration(),
+                LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
+            ],
+            release=version,
+            environment=sys.platform,
+            ignore_errors=[KeyboardInterrupt, RuntimeError],
+        )
+        log.info("Sentry initialized successfully")
+    except Exception as e:
+        log.error("Failed to initialize Sentry: %s", e)
 
 
 if __name__ == "__main__":

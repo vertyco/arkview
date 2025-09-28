@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .constants import CONFIG, EXE_FILE, OUTPUT_DIR, ROOT_DIR
 
@@ -11,6 +11,10 @@ class Banlist(BaseModel):
 
 class Dtypes(BaseModel):
     dtypes: list[str]
+
+
+class ServerNames(BaseModel):
+    servernames: list[str]
 
 
 class Cache(BaseModel):
@@ -25,16 +29,16 @@ class Cache(BaseModel):
     threads: int = 2
     debug: bool = False
     port: int = 8000
-    map_file: Path = ""
-    cluster_dir: Path = ""
-    ban_file: Path = ""
+    map_file: Path | None = None
+    cluster_dir: Path | None = None
+    ban_file: Path | None = None
     asatest: bool = True
     reprocess_on_arkdata_update: bool = False
 
     # States/Cache
-    exports: dict[str, list[dict]] = {}
+    exports: dict[str, list[dict]] = Field(default_factory=dict)
     syncing: bool = False
-    tribelog_buffer: set[str] = set()
+    tribelog_buffer: set[str] = Field(default_factory=set)
     last_export: float = 0.0
     map_last_modified: float = 0.0
 

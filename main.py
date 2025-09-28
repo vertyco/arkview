@@ -39,7 +39,12 @@ class Manager:
         [task.cancel() for task in tasks]
 
         log.info("Cancelling outstanding tasks")
-        await asyncio.gather(*tasks, return_exceptions=False)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception) and not isinstance(
+                result, asyncio.CancelledError
+            ):
+                log.error("Task exited with %s during shutdown", type(result).__name__)
 
         log.info("Shutting down asyncgens...")
         try:

@@ -110,18 +110,20 @@ async def wipe_output():
 
 async def _process_export():
     global cache
-    if not cache.map_file.exists():
+    map_file = cache.map_file
+    if not map_file or not map_file.exists():
         log.warning("No map file found")
         await wipe_output()
         return
     if not cache.exe_file.exists():
         log.warning("No export executable found")
         return
-    if cache.cluster_dir and not cache.cluster_dir.exists():
+    cluster_dir = cache.cluster_dir
+    if cluster_dir and not cluster_dir.exists():
         log.warning("Cluster is set but the specified path does not exist")
     cache.output_dir.mkdir(exist_ok=True)
 
-    map_file_modified = cache.map_file.stat().st_mtime
+    map_file_modified = map_file.stat().st_mtime
 
     if cache.map_last_modified:
         if int(cache.map_last_modified) == int(map_file_modified):
@@ -160,9 +162,9 @@ async def _process_export():
             mask,
             str(cache.exe_file),
             "all",
-            f'"{cache.map_file}"',
+            f'"{map_file}"',
         ]
-        if cdir := cache.cluster_dir:
+        if cdir := cluster_dir:
             command.append(f'"{cdir}\\"')
         command.append(f'"{cache.output_dir}\\"')
     else:
@@ -174,9 +176,9 @@ async def _process_export():
             "dotnet",
             str(cache.exe_file),
             "all",
-            str(cache.map_file),
+            str(map_file),
         ]
-        if cdir := cache.cluster_dir:
+        if cdir := cluster_dir:
             command.append(str(cdir) + "/")
         command.append(str(cache.output_dir) + "/")
 
