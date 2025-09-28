@@ -19,13 +19,14 @@ from uvicorn import Config, Server
 from common.constants import (
     DEFAULT_CONF,
     EXPORTER_LOGS,
+    IGNORED_DINO_PATHS,
     IS_EXE,
     IS_WINDOWS,
     VALID_DATATYPES,
 )
 from common.exporter import export_loop, load_outputs, process_export
 from common.logger import init_sentry
-from common.models import Banlist, Dtypes, cache  # noqa
+from common.models import Banlist, Dtypes, ServerNames, cache  # noqa
 from common.scheduler import scheduler
 from common.statusbar import status_bar
 from common.utils import dotnet_installed, follow_logs, format_sys_info, validate_path
@@ -154,6 +155,7 @@ class ArkViewer:
             map_file = settings.get("MapFilePath", fallback="").replace('"', "")
             if not map_file:
                 log.error("Map file path cannot be empty!")
+                cache.map_file = None
                 return False
 
             cache.map_file = Path(map_file)
@@ -164,6 +166,7 @@ class ArkViewer:
                     "Map file path contains invalid characters! Path must only contain letters, numbers, and underscores (no spaces or special characters): %s",
                     cache.map_file,
                 )
+                cache.map_file = None
                 return False
 
             # Make sure cache.config and cache.map_file are on the same physical drive
@@ -175,11 +178,13 @@ class ArkViewer:
                 )
             if not Path(cache.map_file).exists():
                 log.error("Map file does not exist! %s", cache.map_file)
+                cache.map_file = None
                 return False
             if not Path(cache.map_file).is_file():
                 log.error(
                     "Map path must be a file, not a directory! %s", cache.map_file
                 )
+                cache.map_file = None
                 return False
             else:
                 cache.map_file = Path(cache.map_file)
@@ -187,6 +192,7 @@ class ArkViewer:
             cluster_dir = settings.get("ClusterFolderPath", fallback="").replace(
                 '"', ""
             )
+            cache.cluster_dir = None
             if not cluster_dir:
                 log.warning(
                     "Cluster dir has not been set, some features will be unavailable!"
@@ -206,6 +212,7 @@ class ArkViewer:
                         "Cluster directory path contains invalid characters! Path must only contain letters, numbers, and underscores (no spaces or special characters): %s",
                         cache.cluster_dir,
                     )
+                    cache.cluster_dir = None
                     return False
 
             ban_file = settings.get("BanListFile", fallback="").replace('"', "")
@@ -213,23 +220,27 @@ class ArkViewer:
                 path = Path(ban_file)
                 if not path.exists():
                     log.error("Banlist file %s specified but does not exist!", path)
+                    cache.ban_file = None
                     return False
                 if not path.is_file():
                     log.error("Banlist path %s is not a file!", path)
+                    cache.ban_file = None
                     return False
                 # Ensure it's a .txt file
                 if not path.name.lower().endswith(".txt"):
                     log.error("Banlist file %s is not a .txt file!", path)
+                    cache.ban_file = None
                     return False
                 cache.ban_file = path
             else:
                 log.info("Banlist file not set!")
+                cache.ban_file = None
 
         txt = (
             f"\nRunning as EXE: {cache.root_dir}\n"
             f"Exporter: {cache.exe_file}\n"
-            f"Map File: {cache.map_file}\n"
-            f"Cluster Dir: {cache.cluster_dir}\n"
+            f"Map File: {cache.map_file if cache.map_file else 'None'}\n"
+            f"Cluster Dir: {cache.cluster_dir if cache.cluster_dir else 'None'}\n"
             f"Output Dir: {cache.output_dir}\n"
             f"Working Dir: {os.getcwd()}\n"
             f"Debug: {cache.debug}\n"
@@ -246,7 +257,7 @@ class ArkViewer:
         except FileNotFoundError:
             log.error("Failed to check .NET version!")
 
-        if not cache.map_file.exists():
+        if not cache.map_file or not cache.map_file.exists():
             log.error("Map file does not exist!")
             return False
         if cache.cluster_dir and not cache.cluster_dir.exists():
@@ -387,14 +398,17 @@ class ArkViewer:
         uptime = (
             datetime.now() - datetime.fromtimestamp(psutil.boot_time())
         ).total_seconds()
+        map_name = cache.map_file.name if cache.map_file else ""
+        map_path = str(cache.map_file) if cache.map_file else ""
+        cluster_dir = str(cache.cluster_dir) if cache.cluster_dir else ""
         return {
             "last_export": str(int(cache.last_export))
             if stringify
             else int(cache.last_export),
             "port": str(cache.port) if stringify else cache.port,
-            "map_name": str(cache.map_file.name),
-            "map_path": str(cache.map_file),
-            "cluster_dir": str(cache.cluster_dir),
+            "map_name": map_name if stringify else map_name,
+            "map_path": map_path if stringify else map_path,
+            "cluster_dir": cluster_dir if stringify else cluster_dir,
             "version": VERSION,
             "cached_keys": ", ".join(cache.exports.keys())
             if stringify
@@ -421,7 +435,7 @@ class ArkViewer:
                 detail="Banlist file not set!",
                 headers=self.info(stringify=True),
             )
-        if isinstance(cache.ban_file, Path) and not cache.ban_file.exists():
+        if cache.ban_file and not cache.ban_file.exists():
             raise HTTPException(
                 status_code=400,
                 detail="Banlist file does not exist!",
@@ -493,6 +507,43 @@ class ArkViewer:
             data = {datatype: target_data}
 
         return JSONResponse(content={**data, **self.info()})
+
+    @router.get("/tribetames/{gameid}")
+    async def get_tribe_tames(self, request: Request, gameid: str):
+        """Get the tames belonging to the tribe of the player with the given game ID"""
+        await self.check_keys(request)
+        global cache
+        tribes: list[dict] | None = cache.exports.get("tribes")
+        tamed: list[dict] | None = cache.exports.get("tamed")
+        if not tribes or not tamed:
+            raise HTTPException(
+                status_code=404,
+                detail="Tribes or Tamed data not cached yet!",
+                headers=self.info(stringify=True),
+            )
+        for tribe in tribes["data"]:
+            if not tribe.get("members"):
+                continue
+            if not isinstance(tribe["members"], list):
+                continue
+            if any(
+                str(i.get("steamid")).lower() == gameid.lower()
+                for i in tribe["members"]
+            ):
+                break
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No tribe found for player with game ID {gameid}",
+                headers=self.info(stringify=True),
+            )
+        tribe_tames = []
+        for tame in tamed["data"]:
+            if int(tame.get("tribeid", -1)) == tribe["tribeid"]:
+                tribe_tames.append(tame)
+        return JSONResponse(
+            content={"tamed": tribe_tames, "tribes": [tribe], **self.info()}
+        )
 
     @router.get("/overlimit/{limit}")
     async def get_over_limit(self, request: Request, limit: int):
@@ -572,6 +623,56 @@ class ArkViewer:
             data[datatype] = target_data
 
         return JSONResponse(content={**data, **self.info()})
+
+    @router.post("/foreigntamescan")
+    async def foreign_tame_scan(self, request: Request, servers: ServerNames):
+        """Scan all tames and ensure their 'tamedServer' field matches one of the provided server names"""
+        await self.check_keys(request)
+        global cache
+        valid_servers = [s.lower() for s in servers.servernames if s.strip()]
+
+        if not valid_servers:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid server names provided!",
+                headers=self.info(stringify=True),
+            )
+
+        tamed = cache.exports.get("tamed")
+        tribes = cache.exports.get("tribes")
+        if not tamed or not tribes:
+            raise HTTPException(
+                status_code=404,
+                detail="Tamed or Tribes data not cached yet!",
+                headers=self.info(stringify=True),
+            )
+
+        flagged_tames = []
+        flagged_tribes = []
+        found_tribes = set()
+        for tame in tamed["data"]:
+            if tame.get("tamedServer") is None:
+                continue
+            if not tame.get("tamedServer", "").strip():
+                continue
+            server = tame["tamedServer"].lower()
+            if server in valid_servers:
+                continue
+            if tame["creature"] in IGNORED_DINO_PATHS:
+                continue
+            tribe_id = tame["tribeid"]
+            if tribe_id not in found_tribes:
+                found_tribes.add(tribe_id)
+
+            flagged_tames.append(tame)
+
+        for tribe in tribes["data"]:
+            if tribe["tribeid"] in found_tribes:
+                flagged_tribes.append(tribe)
+
+        return JSONResponse(
+            content={"tamed": flagged_tames, "tribes": flagged_tribes, **self.info()}
+        )
 
     @router.get("/stats")
     async def get_system_info(self, request: Request):
