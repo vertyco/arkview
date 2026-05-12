@@ -1,196 +1,134 @@
-# ArkView
+# ArkViewer
 
-ArkView is a client side plugin for the Arkon bot that allows you to view your map data in real time. It's a simple client that runs on your server and listens for requests from Arkon. It then sends the data back to Arkon for you to view.
+ArkViewer is a lightweight FastAPI REST service that parses ARK: Survival Evolved / Ascended save files and exposes game data via HTTP endpoints. It serves as the data backend for the ArkTools cog running in [Red-DiscordBot](https://github.com/Cog-Creators/Red-DiscordBot).
 
-ArkView only processes one server per instance, so if you are running multiple maps on a single server you will need multiple instances of ArkView running.
+ArkViewer processes one map per instance. For multiple maps on a single server, run multiple instances on different ports.
 
 ![Platform](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
 ![Platform](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
 
-![Python 3.8](https://img.shields.io/badge/python-v3.11-orange?style=for-the-badge)
+![Python 3.12+](https://img.shields.io/badge/python-v3.12+-orange?style=for-the-badge)
 ![license](https://img.shields.io/github/license/Vertyco/arkview?style=for-the-badge)
 
-![black](https://img.shields.io/badge/style-black-000000?style=for-the-badge&?link=https://github.com/psf/black)
-![GitHub repo size](https://img.shields.io/github/repo-size/Vertyco/arkview?color=blueviolet&style=for-the-badge)
+## What's New in v3
 
-# Configuration
+- **No more .NET dependency** — arkparser (pure Python) replaces the C# ASVExport subprocess
+- **Real-time file watching** — watchdog monitors save files and reparses automatically on change
+- **Cleaner response shapes** — snake_case keys, nested stat objects, flat response envelopes
+- **Faster startup** — no subprocess spawning or JSON file I/O
 
-The client uses a `config.ini` file to store the configuration. The file is created when you run the client for the first time. You can also create it manually by copying the `default_config.ini` file from the repo and renaming it to `config.ini`.
+## Configuration
+
+The client uses a `config.ini` file created automatically on first run.
 
 ```ini
 [Settings]
 # Port for the API to listen on (TCP)
-# Make sure to forward this port in your router and allow it as TCP in your firewall
 Port = 8000
 
 # Direct path to the .ark map file
-MapFilePath = path/to/your/map.ark
+# ASE: path to TheIsland.ark
+# ASA: path to TheIsland_WP.ark
+# Profiles and tribe files are discovered from the same directory
+MapFilePath =
 
-# (Optional): Direct path to the solecluster folder
-ClusterFolderPath = path/to/your/solecluster
+# (Optional) Direct path to the cluster/solecluster folder
+ClusterFolderPath =
 
-# (Optional): Direct path to BanList.txt file
-BanListFile = path/to/your/BanList.txt
+# (Optional) Direct path to BanList.txt file
+BanListFile =
 
-# Process priority(Windows-only): LOW, BELOWNORMAL, NORMAL, ABOVENORMAL, HIGH
-Priority = LOW
-
-# Number of threads to use for processing (if the server's cpu has less cores than this setting, it will default to the server's cpu count)
-Threads = 2
-
-# If true, api will only be accessible locally (If running as python, this will cause the client to fail)
+# If true, API binds to 127.0.0.1 only
 Debug = False
 
-# (Optional): Set a sentry DSN for error tracking
+# (Optional) Sentry DSN for error tracking
 DSN =
 
-# (Optional): API Key for authentication
+# (Optional) API Key for Bearer token authentication
 APIKey =
 ```
 
-# Running on Windows
+## Running on Windows
 
-You will need windows with the latest .NET v6.0 framework to run this client
+1. Download the latest `ArkViewer.exe` from [Releases](https://github.com/vertyco/arkview/releases)
+2. Run it — a `config.ini` file is created in the same directory
+3. Edit `config.ini` with your map file path and port
+4. Forward the port in your router/firewall (TCP)
+5. Run `ArkViewer.exe` again to start serving
 
-1. [Get .NET Framework Here](https://dotnet.microsoft.com/en-us/download)
-2. Download the latest client from [Releases](https://github.com/vertyco/arkview/releases)
-3. Run the .exe anywhere you want, it will make a `config.ini` file that you can set your map and cluster path in
-4. Set the port you want the client to listen on and forward it in your router
-
-# Running on Linux (ASE ONLY) [UNSUPPORTED!]
-
-This assumes you have a basic understanding of Linux and how to use the terminal.
-Support for running on Linux is experimental and may not work as expected. As such I cannot provide support for this method.
-
-Run the following commands to install the required dependencies
+## Running from Source
 
 ```bash
-# Update existing packages
-sudo apt update && sudo apt upgrade -y
-
-# Install the .NET 6.0 SDK and runtime
-sudo apt -y install dotnet-sdk-6.0
-sudo apt -y install aspnetcore-runtime-6.0
-
-# Install python and essential dependencies
-sudo apt -y install python3.11 python3.11-dev python3.11-venv git build-essential nano
-
-# Create a virtual environment
-python3.11 -m venv ~/arkenv
-
-# Activate the virtual environment
-source ~/arkenv/bin/activate
-
-# Clone the repository and cd into it
+# Clone the repo
 git clone https://github.com/vertyco/arkview.git
 cd arkview
 
-# Install the required python packages
+# Create and activate a virtual environment
+python -m venv .venv
+# Windows:
+.venv\Scripts\Activate.ps1
+# Linux:
+source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
+pip install -e /path/to/arkparser  # or: pip install arkparser
 
-# Edit the config.ini file to your liking
-cp default_config.ini config.ini
-sudo nano config.ini  # Save and exit with ctrl + O; enter; ctrl + X
+# Edit config
+cp config.ini config.ini  # already exists as default
+# Edit config.ini with your paths
 
-# Run the client
-python3.11 main.py
+# Run
+python main.py
 ```
 
-## Setting up Auto-Start on Boot for linux
-
-First, your Linux `username` can be fetched with the following command:
+## Running with Docker
 
 ```bash
-whoami
+docker build -t arkviewer .
+docker run -p 8000:8000 \
+  -v /path/to/config.ini:/app/config.ini \
+  -v /path/to/saves:/saves \
+  arkviewer
 ```
 
-Next, your python path can be fetched with the following commands:
+Mount your ARK save directory and reference it in `config.ini`.
 
-```bash
-source ~/arkenv/bin/activate
-/usr/bin/which python
-```
+## API Endpoints
 
-Then create the new service file:
+All endpoints require `Authorization: Bearer <APIKey>` header when `APIKey` is set.
 
-`sudo nano /etc/systemd/system/arkview.service`
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Server metadata (version, map, uptime) |
+| GET | `/stats` | System resource stats (CPU, RAM, disk, network) |
+| GET | `/data/{datatype}` | Single data type: `tamed`, `wild`, `players`, `tribes`, `structures`, `tribelogs`, `mapstructures`, `all` |
+| POST | `/datas` | Multiple data types — body: `{"dtypes": ["tamed", "tribes"]}` |
+| GET | `/tribetames/{gameid}` | Tamed creatures for a player's tribe (by steam ID) |
+| GET | `/overlimit/{limit}` | Tribes exceeding tame count limit |
+| POST | `/foreigntamescan` | Find tames from foreign servers — body: `{"servernames": ["ServerName"]}` |
+| GET | `/banlist` | Current ban list |
+| PUT | `/updatebanlist` | Replace ban list — body: `{"banlist": ["steamid1", "steamid2"]}` |
 
-Paste the following in the file, and replace all instances of `username` with the Linux username you retrieved above, and `path` with the python path you retrieved above.
+### Filtered Routes (bonus)
 
-```ini
-[Unit]
-Description=arkview
-After=multi-user.target
-After=network-online.target
-Wants=network-online.target
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/data/filter/tamed` | Filter by `tribe_id`, `class_name`, `is_cryo` |
+| GET | `/data/filter/wild` | Filter by `class_name`, `tameable` |
+| GET | `/data/filter/players` | Filter by `tribe_id`, `steam_id` |
+| GET | `/data/filter/players/{player_id}` | Single player by ID |
+| GET | `/data/filter/tribes` | Filter by `tribe_id` |
+| GET | `/data/filter/tribes/{tribe_id}` | Single tribe by ID |
+| GET | `/data/filter/structures` | Filter by `tribe_id`, `class_name` |
+| GET | `/data/filter/tribelogs` | Filter by `tribe_id`, `day` |
+| GET | `/data/filter/mapstructures` | Filter by `type` |
 
-[Service]
-ExecStart=path -O -m main.py --no-prompt
-User=username
-Group=username
-Type=idle
-Restart=on-abnormal
-RestartSec=15
-RestartForceExitStatus=1
-RestartForceExitStatus=26
-TimeoutStopSec=10
+## Credits
 
-[Install]
-WantedBy=multi-user.target
-```
+- [arkparser](https://github.com/vertyco/arkparser) — Python ARK save file parser
+- Originally based on miragedmuk's [ASV](https://github.com/miragedmuk/ASV) C# exporter
 
-Save and exit `ctrl + O; enter; ctrl + x`
+## Contributing
 
-### Starting and enabling the service
-
-```bash
-# Starting the service
-sudo systemctl start arkview
-
-# Enabling the service
-sudo systemctl enable arkview
-
-# Stopping the service
-sudo systemctl stop arkview
-```
-
-# Adding to Arkon
-
-After you have the client running, you can add it to Arkon by doing the following:
-
-- Type `+viewservers` to open the server menu, this assumes you've already added your cluster and servers to Arkon.
-- Select the cluster you want and click the `Servers` button.
-- Click the `ArkView` button and a modal will pop up.
-- Enter the port of the client you're running, and click `Submit` (IP is usually not needed as it uses your server's IP)
-
-## EXTRA: Samba (For running on windows but syncing with linux)
-
-```bash
-sudo apt update
-sudo apt install samba
-```
-
-`sudo nano /etc/samba/smb.conf`
-
-```conf
-# Scroll to the bottom of the file and add a new share definition. For example:
-[ShareName]
-path = /path/to/your/directory
-browseable = yes
-writable = yes
-guest ok = yes
-create mask = 0777
-directory mask = 0777
-```
-
-# Credits
-
-This plugin wouldn't be possible without miragedmuk's work on his fork of the old Ark savegame parser, lots of love!
-https://github.com/miragedmuk/ASV
-
-# Contributing
-
-If you have any suggestions, or found any bugs, please ping me in Discord (Vertyco#0117)
-or [open an issue](https://github.com/vertyco/arkview/issues) on my repo!
-
-If you would like to contribute, please talk to me on Discord first about your ideas before opening a PR.
+Open an issue or reach out on Discord (Vertyco) before submitting PRs.

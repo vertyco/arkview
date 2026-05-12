@@ -1,0 +1,57 @@
+VERSION = "3.0.0"
+
+VALID_DATATYPES: list[str] = [
+    "cloud_inventory",
+    "mapstructures",
+    "players",
+    "structures",
+    "tamed",
+    "tribelogs",
+    "tribes",
+    "wild",
+    "all",
+]
+
+IGNORED_DINO_PATHS: list[str] = [
+    "Bee_Queen_Character_BP_C",
+    "Dodo_Character_BP_Bunny_C",
+    "BunnyOviraptor_Character_BP_C",
+    "Salmon_Character_BP_C",
+    "Salmon_Character_BP_Ocean_C",
+    "Salmon_Character_Aberrant_C",
+    "Lunar_Salmon_Character_BP_C",
+    "Rare_Lunar_Salmon_Character_BP_C",
+    "Trilobite_Character_C",
+    "Trilobite_Character_Aberrant_C",
+    "Lunar_Trilobite_Character_BP_C",
+    "Rare_Lunar_Trilobite_Character_BP_C",
+    "Coel_Character_BP_C",
+    "Coel_Character_Aberrant_C",
+    "Coel_Character_BP_Ocean_C",
+    "Lunar_Coel_Character_BP_C",
+    "Rare_Lunar_Coel_Character_BP_C",
+    "Piranha_Character_BP_C",
+    "Piranha_Character_BP_Ocean_C",
+    "Piranha_Character_Aberrant_C",
+    "Lunar_Piranha_Character_BP_C",
+    "Rare_Lunar_Piranha_Character_BP_C",
+    "Lamprey_Character_C",
+    "Lunar_Lamprey_Character_BP_C",
+]
+
+MAP_STRUCTURE_PATTERNS: dict[str, str] = {
+    "OilVein": "oil_vein",
+    "WaterVein": "water_vein",
+    "GasVein": "gas_vein",
+    "WyvernNest": "wyvern_nest",
+    "Deinonychus": "deinonychus_nest",
+    "RockDrakeNest": "rock_drake_nest",
+    "MagmasaurNest": "magmasaur_nest",
+    "BeaverDam": "beaver_dam",
+    "BeeHive": "bee_hive",
+    "Artifact": "artifact",
+    "SupplyCrate": "supply_crate",
+    "ObeliskTerminal": "terminal",
+    "TributeTerminal": "terminal",
+    "CityTerminal": "terminal",
+}

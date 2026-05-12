@@ -138,3 +138,7 @@ config.ini
 build.py
 *.old
 REWRITE_SPEC.md
+skills/
+copilot-instructions.md
+legacy/
+CLAUDE.md
