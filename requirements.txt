@@ -1,4 +1,4 @@
-arkparser
+﻿arkparser>=0.1.7
 fastapi
 uvicorn[standard]
 psutil

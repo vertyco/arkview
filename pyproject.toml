@@ -9,6 +9,10 @@ description = "FastAPI REST service for ARK save file data"
 readme = "README.md"
 requires-python = ">=3.11"
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"

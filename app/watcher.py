@@ -55,7 +55,9 @@ class ArkEventHandler(FileSystemEventHandler):
             return
 
         path = Path(str(event.src_path))
-        self.schedule_reparse(self.scope_for(path), path)
+        scope = self.scope_for(path)
+        log.debug("File %s: %s (scope=%s)", event.event_type, path.name, scope.value)
+        self.schedule_reparse(scope, path)
 
     def on_modified(self, event: FileSystemEvent) -> None:
         self.handle(event)
@@ -85,6 +87,11 @@ class ArkEventHandler(FileSystemEventHandler):
             self.pending_scopes.clear()
             self.pending_paths.clear()
 
+        log.debug(
+            "Debounce fired: scopes={%s} paths=%s",
+            ",".join(s.value for s in scopes),
+            [p.name for p in paths],
+        )
         self.loop.call_soon_threadsafe(
             self.loop.create_task, self.callback(scopes, paths)
         )

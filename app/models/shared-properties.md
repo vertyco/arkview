@@ -8,7 +8,7 @@
 
 ## Shared Properties (44 total)
 
-**Core identity — nearly always present (>90%):**
+**Core identity - nearly always present (>90%):**
 | Property | Tamed % | Wild % |
 |---|---|---|
 | `DinoID1` | 100% | 100% |

@@ -1,11 +1,43 @@
 import logging
+import os
+import sys
 from configparser import ConfigParser
 from pathlib import Path
 
 from pydantic import BaseModel
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-CONFIG_PATH = ROOT_DIR / "config.ini"
+
+def _resolve_root_dir() -> Path:
+    """Return the directory the user thinks of as "where the app lives".
+
+    - When running from source: the repo root (parent of the ``app/`` package).
+    - When frozen by PyInstaller: the directory containing the .exe itself -
+      NOT the temporary ``_MEI*`` extraction folder where ``__file__`` points.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+def _resolve_config_path() -> Path:
+    """Locate ``config.ini`` for the running instance.
+
+    Purpose: one arkviewer install often serves multiple ARK maps from a
+    single host (one process per map). Allow each instance to point at its
+    own config file via the ``ARKVIEWER_CONFIG`` env var so we don't need to
+    duplicate the install. Falls back to ``<root>/config.ini`` for the
+    single-instance / dev / Windows-exe case.
+    Preconditions: ``ARKVIEWER_CONFIG`` (if set) is a readable / creatable path.
+    Postconditions: returns an absolute ``Path``; does not check existence.
+    Side effects: reads the environment.
+    """
+    if env_path := os.environ.get("ARKVIEWER_CONFIG"):
+        return Path(env_path).expanduser().resolve()
+    return _resolve_root_dir() / "config.ini"
+
+
+ROOT_DIR = _resolve_root_dir()
+CONFIG_PATH = _resolve_config_path()
 
 DEFAULT_CONFIG = """[Settings]
 # Port for the API to listen on (TCP)
@@ -61,6 +93,11 @@ def parse_int(value: str, default: int) -> int:
 
 def resolve_path(raw: str, base_dir: Path) -> Path | None:
     raw = raw.strip()
+    # Windows users (and the Explorer "Copy as path" command) commonly paste
+    # paths surrounded by double quotes. Strip a matched pair of surrounding
+    # quotes so the path resolves cleanly instead of being treated as relative.
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ('"', "'"):
+        raw = raw[1:-1].strip()
     if not raw:
         return None
 

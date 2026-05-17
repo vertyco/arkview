@@ -1,0 +1,64 @@
+# One arkviewer container per ARK map on the same host.
+#
+# Layout this assumes (adjust to match your dedicated-server install):
+#
+#   ./deploy/configs/ragnarok/config.ini      <-- one config.ini per map
+#   ./deploy/configs/theisland/config.ini
+#   /srv/ark/ragnarok/saves/Ragnarok.ark      <-- ARK save dir, bind-mounted RO
+#   /srv/ark/theisland/saves/TheIsland.ark
+#
+# Inside each config.ini, set MapFilePath to the path AS SEEN INSIDE THE
+# CONTAINER - same as the mount target on the right side of the ``:`` in the
+# volumes list below (e.g. /srv/ark/ragnarok/saves/Ragnarok.ark).
+#
+# Bring everything up:
+#     docker compose up -d
+# Tail one service's logs:
+#     docker compose logs -f arkviewer-ragnarok
+# Restart just one map after a config edit:
+#     docker compose restart arkviewer-theisland
+# Tear it all down:
+#     docker compose down
+
+x-arkviewer-base: &arkviewer-base
+  # Shared build context - every service runs the same image, just with a
+  # different config bind-mount and a different host port.
+  build: .
+  image: arkviewer:latest
+  restart: unless-stopped
+  # The compose file lives next to the source, so `build: .` always rebuilds
+  # the local copy. Use ``image: ghcr.io/vertyco/arkviewer:0.1.4`` instead
+  # once you publish to a registry.
+
+services:
+  arkviewer-ragnarok:
+    <<: *arkviewer-base
+    container_name: arkviewer-ragnarok
+    ports:
+      - "8001:8000" # host:container - map each instance to its own host port
+    volumes:
+      - ./deploy/configs/ragnarok/config.ini:/app/config.ini:ro
+      - /srv/ark/ragnarok/saves:/srv/ark/ragnarok/saves:ro
+      # Optional: a per-map writable dir for the ban list, if you use the
+      # ban-list management endpoints. Comment out if not needed.
+      - /srv/ark/ragnarok/banlist:/srv/ark/ragnarok/banlist
+
+  arkviewer-theisland:
+    <<: *arkviewer-base
+    container_name: arkviewer-theisland
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./deploy/configs/theisland/config.ini:/app/config.ini:ro
+      - /srv/ark/theisland/saves:/srv/ark/theisland/saves:ro
+
+  # Add more services with the same pattern: bump the host port, swap the
+  # bind mount, copy the YAML block. Example for an ASA Scorched Earth:
+  #
+  # arkviewer-scorched-asa:
+  #   <<: *arkviewer-base
+  #   container_name: arkviewer-scorched-asa
+  #   ports: ["8003:8000"]
+  #   volumes:
+  #     - ./deploy/configs/scorched-asa/config.ini:/app/config.ini:ro
+  #     - /srv/asa/scorched/saves:/srv/asa/scorched/saves:ro

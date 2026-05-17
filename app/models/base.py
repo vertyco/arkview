@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+import typing as t
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class BaseResponse(BaseModel):
@@ -12,6 +14,14 @@ class BaseResponse(BaseModel):
     version: str = Field(description="ArkViewer version")
 
 
+def _stringify_int_keys(values: t.Any) -> t.Any:
+    """Raw GameObject stat/color dicts come back with int keys (``{0: 35, 1: 26}``);
+    validation_alias matches by string. Coerce int → str so the aliases populate."""
+    if isinstance(values, dict):
+        return {str(k): v for k, v in values.items()}
+    return values
+
+
 class ColorRegions(BaseModel):
     c0: int = Field(default=0, validation_alias="0", description="Color region 0")
     c1: int = Field(default=0, validation_alias="1", description="Color region 1")
@@ -19,6 +29,10 @@ class ColorRegions(BaseModel):
     c3: int = Field(default=0, validation_alias="3", description="Color region 3")
     c4: int = Field(default=0, validation_alias="4", description="Color region 4")
     c5: int = Field(default=0, validation_alias="5", description="Color region 5")
+
+    _stringify = model_validator(mode="before")(
+        classmethod(lambda cls, v: _stringify_int_keys(v))
+    )
 
 
 class Stats(BaseModel):
@@ -47,6 +61,10 @@ class Stats(BaseModel):
     )
     crafting: int | float = Field(
         default=0, validation_alias="11", description="Crafting skill"
+    )
+
+    _stringify = model_validator(mode="before")(
+        classmethod(lambda cls, v: _stringify_int_keys(v))
     )
 
 

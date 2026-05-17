@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(& .venv\\\\Scripts\\\\Activate.ps1)",
+      "PowerShell(python tests\\\\_smoke.py)",
+      "PowerShell(& .venv\\\\Scripts\\\\Activate.ps1; $env:PYTHONPATH = \".\"; python tests\\\\_smoke.py)",
+      "PowerShell(& .venv\\\\Scripts\\\\Activate.ps1; $env:PYTHONPATH = \".\"; python tests\\\\_smoke.py testdata\\\\ase\\\\maps\\\\theisland\\\\TheIsland.ark 2>&1 | Select-Object -First 25)",
+      "PowerShell(pytest -q --tb=short 2>&1)",
+      "PowerShell(pytest --version)",
+      "PowerShell(pytest --co -q 2>&1)",
+      "PowerShell(pytest --co --collect-only --no-header -q 2>&1)",
+      "PowerShell(\"---\")",
+      "PowerShell(pytest -q --tb=line 2>&1)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Vert\\\\Documents\\\\Projects-Local\\\\PrivateCogs\\\\arktools\" -Recurse -File)",
+      "Bash(Select-Object FullName)",
+      "Read(//c/Users/Vert/Documents/Projects-Local/PrivateCogs/arktools/**)",
+      "Bash(powershell -Command \"Get-ChildItem -Recurse -File | Select-Object -First 30 FullName\")",
+      "Bash(where python *)",
+      "Read(//c/Users/Vert/AppData/Local/Programs/Python/**)",
+      "Read(//c/Users/Vert/AppData/Roaming/**)",
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\('c:/Users/Vert/Documents/Projects-Local/PrivateCogs/arktools/common/av_models.py', encoding='utf-8'\\).read\\(\\)\\); print\\('av_models.py: syntax OK'\\)\")",
+      "PowerShell(cd \"c:\\\\Users\\\\Vert\\\\Documents\\\\Projects-Local\\\\arkviewer\"; & .venv\\\\Scripts\\\\Activate.ps1; $env:PYTHONPATH = \".\"; python tests\\\\_cog_smoke.py 2>&1)",
+      "Bash(powershell -NoProfile -Command ' *)",
+      "Bash(grep -iE \"\\\\.ark$|\\\\.arkprofile$\")",
+      "Bash(grep -iE \"\\\\.ark$\")",
+      "Bash(/c/Users/Vert/Documents/Projects-Local/arkviewer/.venv/Scripts/python.exe -c ' *)",
+      "PowerShell(cd \"c:\\\\Users\\\\Vert\\\\Documents\\\\Projects-Local\\\\arkviewer\"; & .venv\\\\Scripts\\\\Activate.ps1; $env:PYTHONPATH = \".\"; python tests\\\\check_findplayer.py 2>&1 | Select-Object -First 22)",
+      "PowerShell(cd \"c:\\\\Users\\\\Vert\\\\Documents\\\\Projects-Local\\\\arkviewer\"; & .venv\\\\Scripts\\\\Activate.ps1; $env:PYTHONPATH = \".\"; python tests\\\\check_pawn_merge.py 2>&1 | Select-Object -First 30)"
+    ]
+  }
+}

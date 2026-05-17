@@ -1,3 +1,5 @@
+import typing as t
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from .config import AppConfig
@@ -31,6 +33,15 @@ class AppState(BaseModel):
 
     config: AppConfig = Field(default_factory=AppConfig)
     data: GameData = Field(default_factory=GameData)
+
+    # Player-pawn state extracted from the most recent world-save parse, keyed by
+    # ``player_id``. Holds per-player live data the .arkprofile doesn't carry:
+    # current GPS position, level (when the player was online when saved), stat
+    # allocations, gender from pawn class, and live tribe name. Refreshed on
+    # every SAVE-scope reparse; consumed by ``apply_player_pawn_state`` so
+    # PROFILE-scope reparses can still inject pawn data into the freshly-parsed
+    # player record without needing to re-read the world save.
+    player_pawn_state: dict[int, dict[str, t.Any]] = Field(default_factory=dict)
 
     syncing: bool = False
     last_export: float = 0.0

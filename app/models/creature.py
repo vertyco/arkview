@@ -5,6 +5,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     field_validator,
     model_validator,
 )
@@ -65,6 +66,18 @@ class Creature(BaseResponse):
     )
     location: Location = Field(
         description="World position and rotation in Unreal Engine coordinates"
+    )
+    lat: float = Field(
+        default=0.0,
+        description="GPS latitude derived from location + map_config (0.0 if unavailable)",
+    )
+    lon: float = Field(
+        default=0.0,
+        description="GPS longitude derived from location + map_config (0.0 if unavailable)",
+    )
+    ccc: str = Field(
+        default="",
+        description="UE coordinates as 'x y z' for /admincheat TeleportToCCC",
     )
 
     colors: ColorRegions = Field(
@@ -134,6 +147,12 @@ class Creature(BaseResponse):
             int(props["DinoID2"]) & 0xFFFFFFFF
         )
         return values
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def dino_id(self) -> str:
+        """Stable string form of ``id`` used as a dedup key by AVClient."""
+        return str(self.id)
 
 
 class Tamed(Creature):
@@ -300,6 +319,19 @@ class Tamed(Creature):
         description="Name of the server this creature was last uploaded from (obelisk/transmitter transfer)",
     )
 
+    # --- Cryo state ---
+    is_cryo: bool = Field(
+        default=False,
+        validation_alias=AliasPath("properties", "IsInCryo"),
+        description="True if this creature is currently stored in a cryopod",
+    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def level(self) -> int:
+        """Total displayed level: ``base_level + extra_level``."""
+        return self.base_level + self.extra_level
+
     @field_validator("tribe_id", mode="before")
     @classmethod
     def _clean_tribe_id(cls, value: t.Any) -> int:
@@ -351,3 +383,26 @@ class Wild(Creature):
         validation_alias=AliasPath("properties", "bForceDisablingTaming"),
         description="True if this creature cannot be tamed (bosses, mission creatures, special spawns)",
     )
+    tameable: bool = Field(
+        default=False,
+        description="Derived from RequiredTameAffinity property; True when the creature can be tamed",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_tameable(cls, values: dict[str, t.Any]) -> dict[str, t.Any]:
+        """RequiredTameAffinity > 0 → tameable. Checked on root, then status component."""
+        props = values.get("properties", {}) or {}
+        components = values.get("components", {}) or {}
+        status = components.get("status", {}) if isinstance(components, dict) else {}
+        affinity = props.get("RequiredTameAffinity")
+        if affinity is None and isinstance(status, dict):
+            affinity = status.get("RequiredTameAffinity")
+        values["tameable"] = bool(affinity is not None and float(affinity) > 0)
+        return values
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def level(self) -> int:
+        """Wild creatures display their base level."""
+        return self.base_level
