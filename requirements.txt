@@ -1,6 +1,6 @@
-﻿colorama
+arkparser>=0.4.0,<1.0.0
+colorama
 fastapi
 uvicorn[standard]
 psutil
 watchdog
-which
