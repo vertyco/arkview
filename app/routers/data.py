@@ -1,0 +1,144 @@
+import typing as t
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+
+from app.auth import RequireBearer
+from app.config import AppConfig
+from app.constants import DATASET_NAMES
+from app.db import ameta_get, aselect_all, aselect_where
+
+
+class DatasRequest(BaseModel):
+    dtypes: list[str]
+
+
+async def _envelope(cfg: AppConfig, data: t.Any) -> dict[str, t.Any]:
+    day_raw = await ameta_get(cfg.db_path, "day")
+    time_text = await ameta_get(cfg.db_path, "time") or ""
+    return {"day": int(day_raw or 0), "time": time_text, "data": data}
+
+
+def build_router(cfg: AppConfig) -> APIRouter:
+    auth = RequireBearer(cfg.api_key)
+    router = APIRouter(dependencies=[Depends(auth)])
+
+    @router.post("/datas")
+    async def post_datas(req: DatasRequest) -> dict[str, t.Any]:
+        if not req.dtypes:
+            raise HTTPException(status_code=400, detail="dtypes required")
+        out: dict[str, t.Any] = {}
+        for d in req.dtypes:
+            if d not in DATASET_NAMES:
+                raise HTTPException(status_code=404, detail=f"unknown dtype: {d}")
+            out[d] = await aselect_all(cfg.db_path, d)
+        out["day"] = int((await ameta_get(cfg.db_path, "day")) or 0)
+        out["time"] = (await ameta_get(cfg.db_path, "time")) or ""
+        return out
+
+    @router.get("/data/filter/tamed")
+    async def filter_tamed(
+        tribe_id: int | None = Query(None),
+        class_name: str | None = Query(None),
+        is_cryo: bool | None = Query(None),
+    ) -> dict[str, t.Any]:
+        clauses: list[tuple[str, t.Any]] = []
+        if tribe_id is not None:
+            clauses.append(("tribeid", tribe_id))
+        if class_name is not None:
+            clauses.append(("creature", class_name))
+        if is_cryo is not None:
+            clauses.append(("cryo", 1 if is_cryo else 0))
+        return await _envelope(cfg, await aselect_where(cfg.db_path, "tamed", clauses))
+
+    @router.get("/data/filter/wild")
+    async def filter_wild(
+        class_name: str | None = Query(None),
+        tameable: bool | None = Query(None),
+    ) -> dict[str, t.Any]:
+        clauses: list[tuple[str, t.Any]] = []
+        if class_name is not None:
+            clauses.append(("creature", class_name))
+        if tameable is not None:
+            clauses.append(("tameable", 1 if tameable else 0))
+        return await _envelope(cfg, await aselect_where(cfg.db_path, "wild", clauses))
+
+    @router.get("/data/filter/players/{player_id}")
+    async def get_player(player_id: int) -> dict[str, t.Any]:
+        rows = await aselect_where(cfg.db_path, "players", [("playerid", player_id)])
+        if not rows:
+            raise HTTPException(status_code=404, detail="player not found")
+        return await _envelope(cfg, rows[0])
+
+    @router.get("/data/filter/players")
+    async def filter_players(
+        tribe_id: int | None = Query(None),
+        steam_id: str | None = Query(None),
+    ) -> dict[str, t.Any]:
+        clauses: list[tuple[str, t.Any]] = []
+        if tribe_id is not None:
+            clauses.append(("tribeid", tribe_id))
+        if steam_id is not None:
+            clauses.append(("steamid", steam_id))
+        return await _envelope(
+            cfg, await aselect_where(cfg.db_path, "players", clauses)
+        )
+
+    @router.get("/data/filter/tribes/{tribe_id}")
+    async def get_tribe(tribe_id: int) -> dict[str, t.Any]:
+        rows = await aselect_where(cfg.db_path, "tribes", [("tribeid", tribe_id)])
+        if not rows:
+            raise HTTPException(status_code=404, detail="tribe not found")
+        return await _envelope(cfg, rows[0])
+
+    @router.get("/data/filter/tribes")
+    async def filter_tribes(tribe_id: int | None = Query(None)) -> dict[str, t.Any]:
+        clauses: list[tuple[str, t.Any]] = []
+        if tribe_id is not None:
+            clauses.append(("tribeid", tribe_id))
+        return await _envelope(cfg, await aselect_where(cfg.db_path, "tribes", clauses))
+
+    @router.get("/data/filter/structures")
+    async def filter_structures(
+        tribe_id: int | None = Query(None),
+        class_name: str | None = Query(None),
+    ) -> dict[str, t.Any]:
+        clauses: list[tuple[str, t.Any]] = []
+        if tribe_id is not None:
+            clauses.append(("tribeid", tribe_id))
+        if class_name is not None:
+            clauses.append(("struct", class_name))
+        return await _envelope(
+            cfg, await aselect_where(cfg.db_path, "structures", clauses)
+        )
+
+    @router.get("/data/filter/tribelogs")
+    async def filter_tribelogs(tribe_id: int | None = Query(None)) -> dict[str, t.Any]:
+        clauses: list[tuple[str, t.Any]] = []
+        if tribe_id is not None:
+            clauses.append(("tribeid", tribe_id))
+        return await _envelope(
+            cfg, await aselect_where(cfg.db_path, "tribelogs", clauses)
+        )
+
+    @router.get("/data/filter/mapstructures")
+    async def filter_mapstructures(type: str | None = Query(None)) -> dict[str, t.Any]:
+        clauses: list[tuple[str, t.Any]] = []
+        if type is not None:
+            clauses.append(("struct", type))
+        return await _envelope(
+            cfg, await aselect_where(cfg.db_path, "mapstructures", clauses)
+        )
+
+    @router.get("/data/{dtype}")
+    async def get_dataset(dtype: str) -> dict[str, t.Any]:
+        if dtype == "all":
+            data = {
+                name: await aselect_all(cfg.db_path, name) for name in DATASET_NAMES
+            }
+            return await _envelope(cfg, data)
+        if dtype not in DATASET_NAMES:
+            raise HTTPException(status_code=404, detail=f"unknown dtype: {dtype}")
+        return await _envelope(cfg, await aselect_all(cfg.db_path, dtype))
+
+    return router
