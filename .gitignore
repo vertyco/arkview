@@ -140,5 +140,5 @@ build.py
 REWRITE_SPEC.md
 skills/
 copilot-instructions.md
-legacy/
+references/
 CLAUDE.md
