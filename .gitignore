@@ -32,7 +32,8 @@ MANIFEST
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
-*.spec
+# Note: app.spec is now part of the source code and should be tracked
+# *.spec
 
 # Installer logs
 pip-log.txt
@@ -134,7 +135,8 @@ releases/
 
 # other
 config.ini
-build.py
+# Note: build.py is now part of the source code and should be tracked
+# build.py
 *.old
 REWRITE_SPEC.md
 skills/
