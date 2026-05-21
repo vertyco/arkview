@@ -130,7 +130,6 @@ dmypy.json
 .pyre/
 output/
 testdata/
-tests/
 releases/
 
 # other
