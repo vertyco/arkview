@@ -4,6 +4,8 @@ import sqlite3
 import typing as t
 from pathlib import Path
 
+import aiosqlite
+
 META_TABLE: t.Final[str] = "meta"
 
 # Each row stores the indexable columns we filter on, plus the full ASV-legacy
@@ -233,3 +235,77 @@ def _chunked(
             buf = []
     if buf:
         yield buf
+
+
+# ---------------------------------------------------------------------------
+# Async readers via aiosqlite. Routers run on FastAPI's event loop and must
+# not block on sync sqlite3. Writers stay sync (called from ingest in
+# asyncio.to_thread); these are read-only helpers.
+# ---------------------------------------------------------------------------
+
+
+@contextlib.asynccontextmanager
+async def aconnect(db_path: Path) -> t.AsyncIterator[aiosqlite.Connection]:
+    """Async sqlite connection with the same PRAGMAs as the sync `connect()`.
+
+    Pre: `db_path` is a Path; schema initialised by sync init_schema().
+    Post: yields an aiosqlite.Connection with row_factory set to sqlite3.Row.
+    """
+    assert isinstance(db_path, Path)
+    conn = await aiosqlite.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        await conn.execute("PRAGMA foreign_keys=ON")
+        await conn.execute("PRAGMA journal_mode=WAL")
+        await conn.execute("PRAGMA synchronous=NORMAL")
+        yield conn
+    finally:
+        await conn.close()
+
+
+async def ameta_get(db_path: Path, key: str) -> str | None:
+    """Async equivalent of `meta_get`."""
+    assert isinstance(db_path, Path)
+    assert isinstance(key, str) and key
+    async with aconnect(db_path) as conn:
+        async with conn.execute("SELECT value FROM meta WHERE key=?", (key,)) as cur:
+            row = await cur.fetchone()
+    return row["value"] if row else None
+
+
+async def aselect_all(db_path: Path, table: str) -> list[dict[str, t.Any]]:
+    """Return every row's `raw` JSON deserialised from `table`.
+
+    Pre: `table` in DATASET_TABLES.
+    Post: list of decoded dicts; empty list if table is empty.
+    """
+    assert table in DATASET_TABLES, f"unknown table {table}"
+    async with aconnect(db_path) as conn:
+        async with conn.execute(f"SELECT raw FROM {table}") as cur:
+            rows = await cur.fetchall()
+    return [json.loads(r["raw"]) for r in rows]
+
+
+async def aselect_where(
+    db_path: Path,
+    table: str,
+    clauses: list[tuple[str, t.Any]],
+) -> list[dict[str, t.Any]]:
+    """Return rows matching every `(col, value)` clause (AND-joined).
+
+    Pre: `table` in DATASET_TABLES; each clause is `(indexed_col, value)`.
+    Empty clauses returns every row (same as aselect_all).
+    Post: list of decoded `raw` JSON dicts.
+    """
+    assert table in DATASET_TABLES, f"unknown table {table}"
+    assert all(isinstance(c, tuple) and len(c) == 2 for c in clauses)
+    if not clauses:
+        return await aselect_all(db_path, table)
+    where = " AND ".join(f"{col}=?" for col, _ in clauses)
+    params = tuple(v for _, v in clauses)
+    async with aconnect(db_path) as conn:
+        async with conn.execute(
+            f"SELECT raw FROM {table} WHERE {where}", params
+        ) as cur:
+            rows = await cur.fetchall()
+    return [json.loads(r["raw"]) for r in rows]
