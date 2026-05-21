@@ -53,10 +53,12 @@ def build_app(cfg: AppConfig) -> FastAPI:
     app = FastAPI(title="ArkViewer", version="3.0.0")
     app.add_middleware(StalenessMiddleware, db_path=cfg.db_path)
     app.include_router(health.build_router(cfg))
+    app.include_router(
+        cluster.build_router(cfg)
+    )  # must come before data: /data/cluster vs /data/{dtype}
     app.include_router(data.build_router(cfg))
     app.include_router(tribes.build_router(cfg))
     app.include_router(scan.build_router(cfg))
-    app.include_router(cluster.build_router(cfg))
     app.include_router(banlist.build_router(cfg))
     return app
 

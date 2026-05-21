@@ -72,13 +72,45 @@ def _row_for(table: str, asv: dict[str, t.Any]) -> dict[str, t.Any]:
 def _load_world_and_export(
     cfg: AppConfig,
 ) -> tuple[dict[str, list[dict[str, t.Any]]], int, str]:
-    """Load the world save with arkparser and return (export_all_dict, day, time)."""
-    from arkparser import WorldSave, export_all
+    """Load the world save + sidecar profile/tribe files; return (export_dict, day, time).
+
+    `export_all` reads `save.profiles` and `save.tribes` lists which the
+    caller must assemble. We glob `*.arkprofile` and `*.arktribe` from the
+    map's directory and inject them onto the WorldSave instance before the
+    export runs. `.arktributetribe` files use a different binary format and
+    are skipped - arkparser raises on them.
+    """
+    from arkparser import Profile, Tribe, WorldSave, export_all
     from arkparser.common import get_map_config
 
     assert cfg.map_file is not None, "map_file required for world ingest"
     save = WorldSave.load(cfg.map_file)
     map_config = get_map_config(cfg.map_file.name)
+
+    map_dir = cfg.map_file.parent
+    profiles: list[t.Any] = []
+    for p in sorted(map_dir.glob("*.arkprofile")):
+        try:
+            profiles.append(Profile.load(p))
+        except Exception as exc:
+            log.warning("Skipping profile %s: %s: %s", p.name, type(exc).__name__, exc)
+    save.profiles = profiles
+
+    tribes: list[t.Any] = []
+    for tp in sorted(map_dir.glob("*.arktribe")):
+        try:
+            tribes.append(Tribe.load(tp))
+        except Exception as exc:
+            log.warning("Skipping tribe %s: %s: %s", tp.name, type(exc).__name__, exc)
+    save.tribes = tribes
+
+    log.info(
+        "Loaded sidecars: profiles=%d tribes=%d (dir=%s)",
+        len(profiles),
+        len(tribes),
+        map_dir,
+    )
+
     cluster = (
         str(cfg.cluster_dir) if cfg.cluster_dir and cfg.cluster_dir.exists() else None
     )
