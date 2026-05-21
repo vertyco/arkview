@@ -1,1 +1,4 @@
 PyGithub
+pytest
+pytest-asyncio
+httpx
