@@ -128,7 +128,7 @@ class Manager:
                 log.exception("Initial parse failed: %s", exc)
 
         app = build_app(cfg)
-        host = "127.0.0.1" if cfg.debug else "0.0.0.0"
+        host = "0.0.0.0"
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 

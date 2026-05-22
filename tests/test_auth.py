@@ -37,3 +37,16 @@ def test_wrong_bearer_401() -> None:
 def test_missing_header_401() -> None:
     client = _make_app(api_key="secret")
     assert client.get("/secure").status_code == 401
+
+
+def test_raw_token_passes_for_legacy_avclient() -> None:
+    """AVClient sends `Authorization: <key>` without Bearer prefix."""
+    client = _make_app(api_key="secret")
+    r = client.get("/secure", headers={"Authorization": "secret"})
+    assert r.status_code == 200
+
+
+def test_raw_wrong_token_401() -> None:
+    client = _make_app(api_key="secret")
+    r = client.get("/secure", headers={"Authorization": "nope"})
+    assert r.status_code == 401

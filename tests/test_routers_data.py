@@ -78,8 +78,8 @@ def test_get_data_tamed_envelope(tmp_path: Path) -> None:
     body = r.json()
     assert body["day"] == 10
     assert body["time"] == "12:34"
-    assert isinstance(body["data"], list)
-    assert {row["creature"] for row in body["data"]} == {"Rex_C", "Wyvern_C"}
+    assert isinstance(body["tamed"], list)
+    assert {row["creature"] for row in body["tamed"]} == {"Rex_C", "Wyvern_C"}
 
 
 def test_get_data_unknown_404(tmp_path: Path) -> None:
@@ -106,8 +106,8 @@ def test_filter_tamed_by_tribe(tmp_path: Path) -> None:
     r = _client(cfg).get("/data/filter/tamed?tribe_id=2")
     assert r.status_code == 200
     body = r.json()
-    assert len(body["data"]) == 1
-    assert body["data"][0]["creature"] == "Wyvern_C"
+    assert len(body["tamed"]) == 1
+    assert body["tamed"][0]["creature"] == "Wyvern_C"
 
 
 def test_filter_tamed_by_cryo(tmp_path: Path) -> None:
@@ -116,7 +116,7 @@ def test_filter_tamed_by_cryo(tmp_path: Path) -> None:
     r = _client(cfg).get("/data/filter/tamed?is_cryo=true")
     assert r.status_code == 200
     body = r.json()
-    assert [row["creature"] for row in body["data"]] == ["Wyvern_C"]
+    assert [row["creature"] for row in body["tamed"]] == ["Wyvern_C"]
 
 
 def test_filter_wild_by_class(tmp_path: Path) -> None:
@@ -124,4 +124,4 @@ def test_filter_wild_by_class(tmp_path: Path) -> None:
     _seed(cfg)
     r = _client(cfg).get("/data/filter/wild?class_name=Rex_C")
     assert r.status_code == 200
-    assert len(r.json()["data"]) == 1
+    assert len(r.json()["wild"]) == 1

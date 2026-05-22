@@ -26,9 +26,13 @@ def test_root_returns_metadata(tmp_path: Path) -> None:
     app = FastAPI()
     app.include_router(build_router(cfg))
     body = TestClient(app).get("/").json()
-    assert body["map"] == "TheIsland.ark"
+    assert body["map_name"] == "TheIsland"
+    assert body["map_path"].endswith("TheIsland.ark")
     assert "version" in body
-    assert body["last_parse_at"] == "12345"
+    assert body["last_export"] == 12345
+    assert body["port"] == 8000
+    assert "cached_keys" in body
+    assert "uptime" in body
 
 
 def test_stats_returns_system_metrics(tmp_path: Path) -> None:
@@ -48,5 +52,13 @@ def test_stats_returns_system_metrics(tmp_path: Path) -> None:
     app = FastAPI()
     app.include_router(build_router(cfg))
     body = TestClient(app).get("/stats").json()
-    assert "cpu_percent" in body
-    assert "memory_percent" in body
+    # Nested dicts matching legacy v3 / AVClient Response model.
+    assert isinstance(body["cpu"], dict)
+    assert isinstance(body["mem"], dict)
+    assert isinstance(body["disk"], dict)
+    assert isinstance(body["net"], dict)
+    assert "percent" in body["cpu"]
+    assert "percent" in body["mem"]
+    # Meta envelope spliced in.
+    assert "version" in body
+    assert "uptime" in body

@@ -42,11 +42,11 @@ def test_cluster_lists_all_inventories(tmp_path: Path) -> None:
 
     r = client.get("/data/cluster")
     assert r.status_code == 200
-    assert "76561198000000000" in r.json()["data"]
+    assert "76561198000000000" in r.json()["cluster"]
 
     r = client.get("/data/cluster/76561198000000000")
     assert r.status_code == 200
-    assert r.json()["data"]["uploaded_creatures"][0]["id"] == 1
+    assert r.json()["cluster"]["uploaded_creatures"][0]["id"] == 1
 
     r = client.get("/data/cluster/missing")
     assert r.status_code == 404

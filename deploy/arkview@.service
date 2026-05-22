@@ -1,0 +1,58 @@
+# Templated systemd unit. `%i` = whatever you put after the @.
+#
+#   sudo systemctl enable --now arkview@theisland.service
+#   sudo systemctl status arkview@theisland.service
+#   journalctl -u arkview@theisland -f
+#
+# Layout assumed:
+#   /opt/arkviewer/                       code + shared venv
+#   /opt/arkviewer/.venv/bin/python
+#   /opt/arkviewer/main.py
+#   /opt/arkviewer/maps/<name>/config.ini   per-instance config
+#   /opt/arkviewer/maps/<name>/arkviewer.db persistent SQLite
+#
+# Adjust `ReadWritePaths=` if your save tree lives elsewhere. Saves are
+# read-only — ArkViewer never writes them.
+
+[Unit]
+Description=ArkViewer (%i)
+Documentation=https://github.com/vertyco/arkview
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arkviewer
+Group=arkviewer
+WorkingDirectory=/opt/arkviewer
+
+Environment=ARKVIEWER_CONFIG=/opt/arkviewer/maps/%i/config.ini
+Environment=ARKVIEWER_DB=/opt/arkviewer/maps/%i/arkviewer.db
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/opt/arkviewer/.venv/bin/python /opt/arkviewer/main.py
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# Resource ceiling — ingest peak on TheIsland is ~1 GB; give headroom.
+MemoryMax=2G
+TasksMax=256
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/arkviewer/maps/%i
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

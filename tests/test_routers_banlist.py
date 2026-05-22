@@ -47,3 +47,11 @@ def test_updatebanlist_overwrites_file(tmp_path: Path) -> None:
     assert r.status_code == 200
     assert cfg.banlist_file is not None
     assert cfg.banlist_file.read_text(encoding="utf-8").strip().split("\n") == ["999"]
+
+    # Back-compat: accept legacy {bans: [...]} body shape too.
+    r2 = client.put("/updatebanlist", json={"bans": ["111", "222"]})
+    assert r2.status_code == 200
+    assert sorted(cfg.banlist_file.read_text(encoding="utf-8").strip().split("\n")) == [
+        "111",
+        "222",
+    ]

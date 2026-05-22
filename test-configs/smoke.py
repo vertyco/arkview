@@ -85,7 +85,7 @@ def main() -> int:
     print("-- 200 + fresh (no stale header) --")
     r = client.get("/data/tamed")
     print(
-        f"  /data/tamed: {r.status_code}  rows={len(r.json()['data'])}  "
+        f"  /data/tamed: {r.status_code}  rows={len(r.json()['tamed'])}  "
         f"X-Stale={r.headers.get('X-Arkviewer-Stale')}"
     )
     if r.status_code != 200 or r.headers.get("X-Arkviewer-Stale") is not None:
@@ -127,7 +127,14 @@ def main() -> int:
         rows = ""
         if ok and "/data/" in path and "/filter/" not in path and expected == 200:
             try:
-                rows = f"  rows={len(rr.json()['data'])}"
+                # Each /data/<dtype> response has the dtype as a top-level key.
+                # Pull it out of the URL path's last segment.
+                key = path.rsplit("/", 1)[-1]
+                payload = rr.json().get(key)
+                if isinstance(payload, list):
+                    rows = f"  rows={len(payload)}"
+                elif isinstance(payload, dict):
+                    rows = f"  files={len(payload)}"
             except (KeyError, TypeError):
                 pass
         print(f"  [{marker}] {path:42s} -> {rr.status_code}{rows}")

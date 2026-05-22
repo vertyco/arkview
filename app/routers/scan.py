@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.auth import RequireBearer
 from app.config import AppConfig
 from app.db import aconnect
+from app.metadata import get_metadata
 
 
 class ScanRequest(BaseModel):
@@ -19,18 +20,38 @@ def build_router(cfg: AppConfig) -> APIRouter:
 
     @router.post("/foreigntamescan")
     async def scan(req: ScanRequest) -> dict[str, t.Any]:
-        # tamedServer lives only inside `raw` JSON; no index for it.
-        # Low query frequency makes full-scan acceptable.
+        """Return tames whose `tamedServer` is NOT in the supplied list.
+
+        Response shape: `{tamed: [...], tribes: [...], <meta>}` matching
+        legacy v3 so AVClient's `get_foreign_tames` parses both lists.
+        `tamedServer` lives only inside `raw` JSON; no index — full scan.
+        """
         wanted = set(req.servernames)
         async with aconnect(cfg.db_path) as conn:
             async with conn.execute("SELECT raw FROM tamed") as cur:
-                rows = await cur.fetchall()
-        out: list[dict[str, t.Any]] = []
-        for r in rows:
+                tame_rows = await cur.fetchall()
+        foreign: list[dict[str, t.Any]] = []
+        tribe_ids: set[int] = set()
+        for r in tame_rows:
             data = json.loads(r["raw"])
-            srv = data.get("tamedServer")
+            srv = data.get("tamedServer") or data.get("tamed_on_server")
             if srv and srv not in wanted:
-                out.append(data)
-        return {"data": out}
+                foreign.append(data)
+                tid = data.get("tribeid") or data.get("tribe_id")
+                if tid:
+                    tribe_ids.add(int(tid))
+
+        tribes: list[dict[str, t.Any]] = []
+        if tribe_ids:
+            placeholders = ",".join("?" for _ in tribe_ids)
+            async with aconnect(cfg.db_path) as conn:
+                async with conn.execute(
+                    f"SELECT raw FROM tribes WHERE tribeid IN ({placeholders})",
+                    list(tribe_ids),
+                ) as cur:
+                    tribe_rows = await cur.fetchall()
+            tribes = [json.loads(r["raw"]) for r in tribe_rows]
+
+        return {"tamed": foreign, "tribes": tribes, **await get_metadata(cfg)}
 
     return router

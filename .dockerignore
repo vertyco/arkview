@@ -32,6 +32,4 @@ giga.ico
 extra-hooks/
 
 # Plans / docs (kept in git, not in image).
-REWRITE_SPEC.md
-CLAUDE.md
 *.md

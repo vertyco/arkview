@@ -78,10 +78,18 @@ def _client(cfg: AppConfig) -> TestClient:
 def test_tribetames_returns_tribe_creatures(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     _seed(cfg)
+    # Seed a matching tribe so the response can echo it back.
+    batch_insert(
+        cfg.db_path,
+        "tribes",
+        [{"tribeid": 100, "raw": {"tribeid": 100, "name": "TribeOne"}}],
+    )
     r = _client(cfg).get("/tribetames/76561198000000001")
     assert r.status_code == 200
     body = r.json()
-    assert len(body["data"]) == 2
+    assert len(body["tamed"]) == 2
+    assert len(body["tribes"]) == 1
+    assert body["tribes"][0]["tribeid"] == 100
 
 
 def test_tribetames_unknown_player_404(tmp_path: Path) -> None:
@@ -97,5 +105,7 @@ def test_overlimit_lists_tribes_over_threshold(tmp_path: Path) -> None:
     r = _client(cfg).get("/overlimit/1")
     assert r.status_code == 200
     body = r.json()
-    over = {int(row["tribeid"]): row["tame_count"] for row in body["data"]}
-    assert over.get(100) == 2
+    # New shape: {steamid: [tame, ...]} for every player in over-limit tribes.
+    over = body["overlimit"]
+    assert "76561198000000001" in over
+    assert len(over["76561198000000001"]) == 2

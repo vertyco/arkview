@@ -6,17 +6,12 @@ from pydantic import BaseModel
 from app.auth import RequireBearer
 from app.config import AppConfig
 from app.constants import DATASET_NAMES
-from app.db import ameta_get, aselect_all, aselect_where
+from app.db import aselect_all, aselect_where
+from app.metadata import get_metadata
 
 
 class DatasRequest(BaseModel):
     dtypes: list[str]
-
-
-async def _envelope(cfg: AppConfig, data: t.Any) -> dict[str, t.Any]:
-    day_raw = await ameta_get(cfg.db_path, "day")
-    time_text = await ameta_get(cfg.db_path, "time") or ""
-    return {"day": int(day_raw or 0), "time": time_text, "data": data}
 
 
 def build_router(cfg: AppConfig) -> APIRouter:
@@ -29,11 +24,14 @@ def build_router(cfg: AppConfig) -> APIRouter:
             raise HTTPException(status_code=400, detail="dtypes required")
         out: dict[str, t.Any] = {}
         for d in req.dtypes:
+            if d == "all":
+                for name in DATASET_NAMES:
+                    out[name] = await aselect_all(cfg.db_path, name)
+                continue
             if d not in DATASET_NAMES:
                 raise HTTPException(status_code=404, detail=f"unknown dtype: {d}")
             out[d] = await aselect_all(cfg.db_path, d)
-        out["day"] = int((await ameta_get(cfg.db_path, "day")) or 0)
-        out["time"] = (await ameta_get(cfg.db_path, "time")) or ""
+        out.update(await get_metadata(cfg))
         return out
 
     @router.get("/data/filter/tamed")
@@ -49,7 +47,8 @@ def build_router(cfg: AppConfig) -> APIRouter:
             clauses.append(("creature", class_name))
         if is_cryo is not None:
             clauses.append(("cryo", 1 if is_cryo else 0))
-        return await _envelope(cfg, await aselect_where(cfg.db_path, "tamed", clauses))
+        rows = await aselect_where(cfg.db_path, "tamed", clauses)
+        return {"tamed": rows, **await get_metadata(cfg)}
 
     @router.get("/data/filter/wild")
     async def filter_wild(
@@ -61,14 +60,15 @@ def build_router(cfg: AppConfig) -> APIRouter:
             clauses.append(("creature", class_name))
         if tameable is not None:
             clauses.append(("tameable", 1 if tameable else 0))
-        return await _envelope(cfg, await aselect_where(cfg.db_path, "wild", clauses))
+        rows = await aselect_where(cfg.db_path, "wild", clauses)
+        return {"wild": rows, **await get_metadata(cfg)}
 
     @router.get("/data/filter/players/{player_id}")
     async def get_player(player_id: int) -> dict[str, t.Any]:
         rows = await aselect_where(cfg.db_path, "players", [("playerid", player_id)])
         if not rows:
             raise HTTPException(status_code=404, detail="player not found")
-        return await _envelope(cfg, rows[0])
+        return {"players": [rows[0]], **await get_metadata(cfg)}
 
     @router.get("/data/filter/players")
     async def filter_players(
@@ -80,23 +80,23 @@ def build_router(cfg: AppConfig) -> APIRouter:
             clauses.append(("tribeid", tribe_id))
         if steam_id is not None:
             clauses.append(("steamid", steam_id))
-        return await _envelope(
-            cfg, await aselect_where(cfg.db_path, "players", clauses)
-        )
+        rows = await aselect_where(cfg.db_path, "players", clauses)
+        return {"players": rows, **await get_metadata(cfg)}
 
     @router.get("/data/filter/tribes/{tribe_id}")
     async def get_tribe(tribe_id: int) -> dict[str, t.Any]:
         rows = await aselect_where(cfg.db_path, "tribes", [("tribeid", tribe_id)])
         if not rows:
             raise HTTPException(status_code=404, detail="tribe not found")
-        return await _envelope(cfg, rows[0])
+        return {"tribes": [rows[0]], **await get_metadata(cfg)}
 
     @router.get("/data/filter/tribes")
     async def filter_tribes(tribe_id: int | None = Query(None)) -> dict[str, t.Any]:
         clauses: list[tuple[str, t.Any]] = []
         if tribe_id is not None:
             clauses.append(("tribeid", tribe_id))
-        return await _envelope(cfg, await aselect_where(cfg.db_path, "tribes", clauses))
+        rows = await aselect_where(cfg.db_path, "tribes", clauses)
+        return {"tribes": rows, **await get_metadata(cfg)}
 
     @router.get("/data/filter/structures")
     async def filter_structures(
@@ -108,37 +108,36 @@ def build_router(cfg: AppConfig) -> APIRouter:
             clauses.append(("tribeid", tribe_id))
         if class_name is not None:
             clauses.append(("struct", class_name))
-        return await _envelope(
-            cfg, await aselect_where(cfg.db_path, "structures", clauses)
-        )
+        rows = await aselect_where(cfg.db_path, "structures", clauses)
+        return {"structures": rows, **await get_metadata(cfg)}
 
     @router.get("/data/filter/tribelogs")
     async def filter_tribelogs(tribe_id: int | None = Query(None)) -> dict[str, t.Any]:
         clauses: list[tuple[str, t.Any]] = []
         if tribe_id is not None:
             clauses.append(("tribeid", tribe_id))
-        return await _envelope(
-            cfg, await aselect_where(cfg.db_path, "tribelogs", clauses)
-        )
+        rows = await aselect_where(cfg.db_path, "tribelogs", clauses)
+        return {"tribelogs": rows, **await get_metadata(cfg)}
 
     @router.get("/data/filter/mapstructures")
     async def filter_mapstructures(type: str | None = Query(None)) -> dict[str, t.Any]:
         clauses: list[tuple[str, t.Any]] = []
         if type is not None:
             clauses.append(("struct", type))
-        return await _envelope(
-            cfg, await aselect_where(cfg.db_path, "mapstructures", clauses)
-        )
+        rows = await aselect_where(cfg.db_path, "mapstructures", clauses)
+        return {"mapstructures": rows, **await get_metadata(cfg)}
 
     @router.get("/data/{dtype}")
     async def get_dataset(dtype: str) -> dict[str, t.Any]:
         if dtype == "all":
-            data = {
-                name: await aselect_all(cfg.db_path, name) for name in DATASET_NAMES
-            }
-            return await _envelope(cfg, data)
+            out: dict[str, t.Any] = {}
+            for name in DATASET_NAMES:
+                out[name] = await aselect_all(cfg.db_path, name)
+            out.update(await get_metadata(cfg))
+            return out
         if dtype not in DATASET_NAMES:
             raise HTTPException(status_code=404, detail=f"unknown dtype: {dtype}")
-        return await _envelope(cfg, await aselect_all(cfg.db_path, dtype))
+        rows = await aselect_all(cfg.db_path, dtype)
+        return {dtype: rows, **await get_metadata(cfg)}
 
     return router

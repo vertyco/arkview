@@ -138,8 +138,17 @@ config.ini
 # Note: build.py is now part of the source code and should be tracked
 # build.py
 *.old
-REWRITE_SPEC.md
-skills/
-copilot-instructions.md
-references/
-CLAUDE.md
+test-configs/*.db
+test-configs/*.db-wal
+test-configs/*.db-shm
+test-configs/*.ini
+test-configs/asa_sample/
+test-configs/asa_cluster/
+test-configs/asa_probe.py
+test-configs/asa_pull.py
+
+# Operator-local compose (per-host paths/ports). Use docker-compose.example.yml as the seed.
+docker-compose.yml
+docker-compose.override.yml
+configs/
+state/

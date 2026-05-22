@@ -54,7 +54,15 @@ def test_foreigntamescan_matches_server_name(tmp_path: Path) -> None:
     app = FastAPI()
     app.include_router(build_router(cfg))
     client = TestClient(app)
+    batch_insert(
+        cfg.db_path,
+        "tribes",
+        [{"tribeid": 1, "raw": {"tribeid": 1, "name": "Loner"}}],
+    )
     r = client.post("/foreigntamescan", json={"servernames": ["TheIsland-PvE"]})
     assert r.status_code == 200
-    assert len(r.json()["data"]) == 1
-    assert r.json()["data"][0]["creature"] == "Argy_C"
+    body = r.json()
+    assert len(body["tamed"]) == 1
+    assert body["tamed"][0]["creature"] == "Argy_C"
+    assert len(body["tribes"]) == 1
+    assert body["tribes"][0]["tribeid"] == 1

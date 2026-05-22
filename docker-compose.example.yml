@@ -1,0 +1,72 @@
+# ArkViewer v3 - reference compose file.
+#
+# Copy this to docker-compose.yml (gitignored) and edit for your host:
+#   cp docker-compose.example.yml docker-compose.yml
+#
+# One container per map. Each service needs:
+#   - a unique host port mapped to container 8000
+#   - a per-map config.ini (read-only bind)
+#   - a per-map state directory for the SQLite DB (read-write)
+#   - your ARK save tree mounted read-only
+#   - (optional) a shared cluster directory mounted read-only
+#
+# Inside each config.ini, set MapFilePath to the path AS SEEN INSIDE THE
+# CONTAINER. ASA layout is `/saves/<MapName>_WP/<MapName>_WP.ark` (e.g.
+# /saves/TheIsland_WP/TheIsland_WP.ark); ASE is `/saves/<MapName>.ark`.
+# Keep Port=8000 inside the config; the host port comes from the `ports:`
+# mapping below.
+
+x-arkviewer-common: &arkviewer-common
+  image: arkviewer:latest
+  build: .
+  restart: unless-stopped
+  environment:
+    - ARKVIEWER_CONFIG=/config/config.ini
+    - ARKVIEWER_DB=/state/arkviewer.db
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 30s
+
+services:
+  # ---------------------------------------------------------------------
+  # Example: TheIsland on host port 8101
+  # ---------------------------------------------------------------------
+  arkviewer-theisland:
+    <<: *arkviewer-common
+    container_name: arkviewer-theisland
+    ports:
+      - "8101:8000"
+    volumes:
+      - ./configs/theisland.ini:/config/config.ini:ro
+      - ./state/theisland:/state
+      # Replace with your actual save directory for this map:
+      - /path/to/ark/theisland/Saved/SavedArks:/saves:ro
+      # Optional shared cluster dir; remove if not running a cluster:
+      - /path/to/ark/cluster:/cluster:ro
+
+  # ---------------------------------------------------------------------
+  # Example: Ragnarok on host port 8102
+  # ---------------------------------------------------------------------
+  arkviewer-ragnarok:
+    <<: *arkviewer-common
+    container_name: arkviewer-ragnarok
+    ports:
+      - "8102:8000"
+    volumes:
+      - ./configs/ragnarok.ini:/config/config.ini:ro
+      - ./state/ragnarok:/state
+      - /path/to/ark/ragnarok/Saved/SavedArks:/saves:ro
+      - /path/to/ark/cluster:/cluster:ro
+
+  # ---------------------------------------------------------------------
+  # To add another map: copy a service block above, then change
+  #   - container_name
+  #   - host port in `ports:`
+  #   - configs/<map>.ini path
+  #   - state/<map> path
+  #   - /path/to/ark/<map>/Saved bind
+  # Create the matching configs/<map>.ini and state/<map>/ on disk first.
+  # ---------------------------------------------------------------------

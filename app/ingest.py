@@ -124,6 +124,32 @@ def _load_world_and_export(
     return data, day, f"{h:02d}:{m:02d}"
 
 
+def _iter_cluster_rows(cfg: AppConfig) -> t.Iterator[dict[str, t.Any]]:
+    """Walk `cfg.cluster_dir`, yield {file_id, raw} for each CloudInventory.
+
+    Pre: `cfg.cluster_dir` may be None.
+    Post: yields one dict per parsable file; logs and skips unparsable.
+    """
+    from arkparser import CloudInventory
+
+    if cfg.cluster_dir is None or not cfg.cluster_dir.exists():
+        return
+    for path in sorted(cfg.cluster_dir.iterdir()):
+        if not path.is_file():
+            continue
+        try:
+            cloud = CloudInventory.load(path)
+        except Exception as exc:
+            log.warning(
+                "Skipping cluster file %s: %s: %s",
+                path.name,
+                type(exc).__name__,
+                exc,
+            )
+            continue
+        yield {"file_id": path.stem, "raw": cloud.to_dict()}
+
+
 def ingest_full(cfg: AppConfig) -> IngestResult:
     """Full reparse: world save + cluster, swap all dataset tables atomically."""
     assert cfg.map_file is not None
@@ -136,12 +162,14 @@ def ingest_full(cfg: AppConfig) -> IngestResult:
         n = swap_staging(cfg.db_path, table, rows)
         setattr(result, table, n)
 
-    cluster_files = data.get("ASV_ClusterFiles") or {}
-    if cluster_files:
-        ci_rows = (
-            {"file_id": fid, "raw": payload} for fid, payload in cluster_files.items()
-        )
-        result.cluster_files = swap_staging(cfg.db_path, "cluster_inventory", ci_rows)
+    # Cluster inventory: arkparser's `export_all` only folds cluster
+    # uploads into `ASV_Tamed` (with `cryo=true`). To expose the raw
+    # per-file CloudInventory contents at `/data/cluster/{file_id}`, walk
+    # the cluster dir ourselves and stash each file's `to_dict()`. Files
+    # are small (one per cluster transfer); read cost is negligible vs
+    # the world save parse.
+    ci_rows = list(_iter_cluster_rows(cfg))
+    result.cluster_files = swap_staging(cfg.db_path, "cluster_inventory", iter(ci_rows))
 
     meta_set(cfg.db_path, "day", str(day))
     meta_set(cfg.db_path, "time", time_text)
