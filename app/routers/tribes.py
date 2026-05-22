@@ -47,15 +47,15 @@ def build_router(cfg: AppConfig) -> APIRouter:
 
         Response shape: `{overlimit: {steamid: [tame, ...]}, <meta>}`.
         Cryoed and uploaded tames are excluded so the count reflects
-        on-map roster pressure only.
+        on-map roster pressure only. Both filters are indexed columns now,
+        so the bucket query and the fetch run entirely in SQL — no JSON
+        scan of uploaded flag.
         """
         assert limit >= 0
         async with aconnect(cfg.db_path) as conn:
-            # Tribes whose on-map tame count exceeds the limit. Filter cryo
-            # in SQL via the indexed column; uploaded flag lives in raw JSON.
             async with conn.execute(
                 "SELECT tribeid, COUNT(*) AS c "
-                "FROM tamed WHERE cryo=0 "
+                "FROM tamed WHERE cryo=0 AND uploaded=0 "
                 "GROUP BY tribeid HAVING c > ?",
                 (limit,),
             ) as cur:
@@ -67,15 +67,13 @@ def build_router(cfg: AppConfig) -> APIRouter:
             placeholders = ",".join("?" for _ in over_tribes)
             tribe_ids = list(over_tribes)
 
-            # Fetch all the over-limit tribes' tames in one query (no cryo).
             async with conn.execute(
                 f"SELECT tribeid, raw FROM tamed "
-                f"WHERE cryo=0 AND tribeid IN ({placeholders})",
+                f"WHERE cryo=0 AND uploaded=0 AND tribeid IN ({placeholders})",
                 tribe_ids,
             ) as cur:
                 tame_rows = await cur.fetchall()
 
-            # Map tribe -> steamids via players table.
             async with conn.execute(
                 f"SELECT tribeid, steamid FROM players "
                 f"WHERE tribeid IN ({placeholders}) AND steamid <> ''",
@@ -83,15 +81,9 @@ def build_router(cfg: AppConfig) -> APIRouter:
             ) as cur:
                 player_rows = await cur.fetchall()
 
-        # Filter uploaded after json.loads (no index).
         by_tribe: dict[int, list[dict[str, t.Any]]] = {}
         for r in tame_rows:
-            data = json.loads(r["raw"])
-            if data.get("uploaded_from_server"):
-                continue
-            by_tribe.setdefault(int(r["tribeid"]), []).append(data)
-
-        by_tribe = {tid: tames for tid, tames in by_tribe.items() if len(tames) > limit}
+            by_tribe.setdefault(int(r["tribeid"]), []).append(json.loads(r["raw"]))
 
         overlimit_map: dict[str, list[dict[str, t.Any]]] = {}
         for r in player_rows:

@@ -49,6 +49,12 @@ def _row_for(table: str, asv: dict[str, t.Any]) -> dict[str, t.Any]:
         out["creature"] = str(asv.get("creature") or "")
         out["lvl"] = int(asv.get("lvl") or 0)
         out["cryo"] = bool(asv.get("cryo"))
+        # Promote `uploaded_from_server` flag to an indexed column so the
+        # overlimit query (and any future filter) can use it without
+        # scanning raw JSON. arkparser sets this on cluster-cryopod imports.
+        out["uploaded"] = bool(
+            asv.get("uploaded_from_server") or asv.get("uploadedServer")
+        )
     elif table == "wild":
         out["creature"] = str(asv.get("creature") or "")
         out["lvl"] = int(asv.get("lvl") or 0)

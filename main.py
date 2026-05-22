@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from app.config import AppConfig, load_config
 from app.db import init_schema, meta_get
 from app.ingest import ingest_full, ingest_profile, ingest_tribe
-from app.routers import banlist, cluster, data, health, scan, tribes
+from app.routers import banlist, cluster, data, health, scan, search, tribes
 from app.staleness import StalenessMiddleware
 from app.watcher import (
     Cooldown,
@@ -50,12 +50,15 @@ def _scope_for(cfg: AppConfig, path: Path) -> IngestScope | None:
 
 
 def build_app(cfg: AppConfig) -> FastAPI:
-    app = FastAPI(title="ArkViewer", version="3.0.0")
+    app = FastAPI(title="ArkViewer", version="3.1.0")
     app.add_middleware(StalenessMiddleware, db_path=cfg.db_path)
     app.include_router(health.build_router(cfg))
     app.include_router(
         cluster.build_router(cfg)
     )  # must come before data: /data/cluster vs /data/{dtype}
+    app.include_router(
+        search.build_router(cfg)
+    )  # must come before data: /data/search/* vs /data/{dtype}
     app.include_router(data.build_router(cfg))
     app.include_router(tribes.build_router(cfg))
     app.include_router(scan.build_router(cfg))
