@@ -229,11 +229,17 @@ def init_schema(db_path: Path) -> None:
 
     DB is a cache, not a system of record. Schema mismatches → wipe + rebuild
     rather than risk migration bugs. Cold start serves 503 until next reparse.
+
+    Any pre-existing DB whose `PRAGMA user_version` doesn't match the code's
+    SCHEMA_VERSION gets wiped — including legacy DBs at version 0 (which
+    never set `user_version` in earlier arkviewer builds). Truly-fresh paths
+    (no file on disk) skip the wipe.
     """
     assert isinstance(db_path, Path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
+    existed = db_path.exists()
     current = _read_user_version(db_path)
-    if current != 0 and current != SCHEMA_VERSION:
+    if existed and current != SCHEMA_VERSION:
         log.warning(
             "Schema version mismatch (db=%d, code=%d). Wiping %s.",
             current,
