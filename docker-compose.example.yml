@@ -5,24 +5,23 @@
 #
 # One container per map. Each service needs:
 #   - a unique host port mapped to container 8000
-#   - a per-map config.ini (read-only bind)
-#   - a per-map state directory for the SQLite DB (read-write)
+#   - a per-map config.ini bound at /app/config.ini (read-only)
+#   - a per-map state dir bound at /var/lib/arkviewer (read-write, SQLite DB)
 #   - your ARK save tree mounted read-only
 #   - (optional) a shared cluster directory mounted read-only
 #
 # Inside each config.ini, set MapFilePath to the path AS SEEN INSIDE THE
-# CONTAINER. ASA layout is `/saves/<MapName>_WP/<MapName>_WP.ark` (e.g.
-# /saves/TheIsland_WP/TheIsland_WP.ark); ASE is `/saves/<MapName>.ark`.
-# Keep Port=8000 inside the config; the host port comes from the `ports:`
-# mapping below.
+# CONTAINER. ASA layout is `/saves/<MapName>_WP.ark` when binding the
+# `Saved/SavedArks/<MapName>_WP/` directory to /saves; ASE is
+# `/saves/<MapName>.ark` when binding `Saved/SavedArks/`. Keep Port=8000
+# inside the config; the host port comes from the `ports:` mapping below.
 
 x-arkviewer-common: &arkviewer-common
   image: arkviewer:latest
   build: .
   restart: unless-stopped
-  environment:
-    - ARKVIEWER_CONFIG=/config/config.ini
-    - ARKVIEWER_DB=/state/arkviewer.db
+  mem_limit: 4g
+  mem_reservation: 2g
   healthcheck:
     test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/"]
     interval: 30s
@@ -40,10 +39,10 @@ services:
     ports:
       - "8101:8000"
     volumes:
-      - ./configs/theisland.ini:/config/config.ini:ro
-      - ./state/theisland:/state
-      # Replace with your actual save directory for this map:
-      - /path/to/ark/theisland/Saved/SavedArks:/saves:ro
+      - ./configs/theisland.ini:/app/config.ini:ro
+      - ./state/theisland:/var/lib/arkviewer
+      # Replace with your actual per-map save directory:
+      - /path/to/ark/theisland/Saved/SavedArks/TheIsland_WP:/saves:ro
       # Optional shared cluster dir; remove if not running a cluster:
       - /path/to/ark/cluster:/cluster:ro
 
@@ -56,9 +55,9 @@ services:
     ports:
       - "8102:8000"
     volumes:
-      - ./configs/ragnarok.ini:/config/config.ini:ro
-      - ./state/ragnarok:/state
-      - /path/to/ark/ragnarok/Saved/SavedArks:/saves:ro
+      - ./configs/ragnarok.ini:/app/config.ini:ro
+      - ./state/ragnarok:/var/lib/arkviewer
+      - /path/to/ark/ragnarok/Saved/SavedArks/Ragnarok_WP:/saves:ro
       - /path/to/ark/cluster:/cluster:ro
 
   # ---------------------------------------------------------------------
@@ -67,6 +66,6 @@ services:
   #   - host port in `ports:`
   #   - configs/<map>.ini path
   #   - state/<map> path
-  #   - /path/to/ark/<map>/Saved bind
+  #   - save bind path (point at the `<Map>_WP/` dir for ASA)
   # Create the matching configs/<map>.ini and state/<map>/ on disk first.
   # ---------------------------------------------------------------------

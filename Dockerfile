@@ -4,12 +4,15 @@
 
 FROM python:3.12-slim AS runtime
 
+# ARKVIEWER_CONFIG is intentionally NOT set. main.py falls back to
+# `Path(__file__).parent / "config.ini"` (= /app/config.ini) when the env
+# var is unset, so the standard layout — bind your per-map ini at
+# /app/config.ini — works with no extra env wiring.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    ARKVIEWER_CONFIG=/config/config.ini \
-    ARKVIEWER_DB=/state/arkviewer.db
+    ARKVIEWER_DB=/var/lib/arkviewer/arkviewer.db
 
 WORKDIR /app
 
@@ -30,8 +33,8 @@ ARG UID=1000
 ARG GID=1000
 RUN groupadd -g ${GID} arkviewer \
  && useradd  -u ${UID} -g ${GID} -M -s /usr/sbin/nologin arkviewer \
- && mkdir -p /config /state \
- && chown -R arkviewer:arkviewer /app /config /state
+ && mkdir -p /var/lib/arkviewer \
+ && chown -R arkviewer:arkviewer /app /var/lib/arkviewer
 
 USER arkviewer
 

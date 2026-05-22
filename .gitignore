@@ -138,14 +138,7 @@ config.ini
 # Note: build.py is now part of the source code and should be tracked
 # build.py
 *.old
-test-configs/*.db
-test-configs/*.db-wal
-test-configs/*.db-shm
-test-configs/*.ini
-test-configs/asa_sample/
-test-configs/asa_cluster/
-test-configs/asa_probe.py
-test-configs/asa_pull.py
+test-configs/
 
 # Operator-local compose (per-host paths/ports). Use docker-compose.example.yml as the seed.
 docker-compose.yml

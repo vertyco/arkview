@@ -243,8 +243,8 @@ Open `docker-compose.yml`, copy one of the service blocks, change the container 
 ```bash
 docker build -t arkviewer:latest .
 docker run -d --name arkviewer-island \
-  -v $PWD/configs/island.ini:/config/config.ini:ro \
-  -v $PWD/state/island:/state \
+  -v $PWD/configs/island.ini:/app/config.ini:ro \
+  -v $PWD/state/island:/var/lib/arkviewer \
   -v /home/pokuser/asa/Instance_pve-island/Saved/SavedArks:/saves:ro \
   -p 8101:8000 \
   arkviewer:latest
