@@ -27,30 +27,29 @@ def build_router(cfg: AppConfig) -> APIRouter:
         `tamedServer` lives only inside `raw` JSON; no index — full scan.
         """
         wanted = set(req.servernames)
-        async with aconnect(cfg.db_path) as conn:
-            async with conn.execute("SELECT raw FROM tamed") as cur:
-                tame_rows = await cur.fetchall()
         foreign: list[dict[str, t.Any]] = []
         tribe_ids: set[int] = set()
-        for r in tame_rows:
-            data = json.loads(r["raw"])
-            srv = data.get("tamedServer") or data.get("tamed_on_server")
-            if srv and srv not in wanted:
-                foreign.append(data)
-                tid = data.get("tribeid") or data.get("tribe_id")
-                if tid:
-                    tribe_ids.add(int(tid))
-
         tribes: list[dict[str, t.Any]] = []
-        if tribe_ids:
-            placeholders = ",".join("?" for _ in tribe_ids)
-            async with aconnect(cfg.db_path) as conn:
+        async with aconnect(cfg.db_path) as conn:
+            # Stream rows; tamed can be 100k+ entries on busy servers and
+            # `fetchall()` would materialize every raw-JSON blob at once.
+            async with conn.execute("SELECT raw FROM tamed") as cur:
+                async for r in cur:
+                    data = json.loads(r["raw"])
+                    srv = data.get("tamedServer")
+                    if srv and srv not in wanted:
+                        foreign.append(data)
+                        tid = data.get("tribeid")
+                        if tid:
+                            tribe_ids.add(int(tid))
+            if tribe_ids:
+                placeholders = ",".join("?" for _ in tribe_ids)
                 async with conn.execute(
                     f"SELECT raw FROM tribes WHERE tribeid IN ({placeholders})",
                     list(tribe_ids),
                 ) as cur:
                     tribe_rows = await cur.fetchall()
-            tribes = [json.loads(r["raw"]) for r in tribe_rows]
+                tribes = [json.loads(r["raw"]) for r in tribe_rows]
 
         return {"tamed": foreign, "tribes": tribes, **await get_metadata(cfg)}
 

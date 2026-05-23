@@ -2,17 +2,22 @@ import asyncio
 import logging
 import os
 import sys
-import typing as t  # noqa: F401
-from itertools import cycle
+import typing as t
 from pathlib import Path
 
-import psutil
 import uvicorn
 from fastapi import FastAPI
 
 from app.config import AppConfig, load_config
+from app.console import (
+    disable_quickedit,
+    init_logging,
+    print_banner,
+    reconfigure_logging,
+    title_loop,
+)
 from app.constants import VERSION
-from app.db import init_schema, meta_get
+from app.db import init_schema, maintenance, meta_get
 from app.ingest import ingest_full, ingest_profile, ingest_tribe
 from app.routers import banlist, cluster, data, health, scan, search, tribes
 from app.staleness import StalenessMiddleware
@@ -28,73 +33,12 @@ from app.watcher import (
 
 log = logging.getLogger("arkviewer")
 
-IS_WINDOWS: t.Final[bool] = sys.platform.startswith("win")
-IS_FROZEN: t.Final[bool] = getattr(sys, "frozen", False)
-
-# Title-bar progress animation frames. Cycled by `title_loop` once per 150ms
-# so the operator can see at a glance that the exe is alive.
-TITLE_BAR_FRAMES: t.Final[tuple[str, ...]] = (
-    "▱▱▱▱▱▱▱",
-    "▰▱▱▱▱▱▱",
-    "▰▰▱▱▱▱▱",
-    "▰▰▰▱▱▱▱",
-    "▰▰▰▰▱▱▱",
-    "▰▰▰▰▰▱▱",
-    "▰▰▰▰▰▰▱",
-    "▰▰▰▰▰▰▰",
-    "▱▰▰▰▰▰▰",
-    "▱▱▰▰▰▰▰",
-    "▱▱▱▰▰▰▰",
-    "▱▱▱▱▰▰▰",
-    "▱▱▱▱▱▰▰",
-    "▱▱▱▱▱▱▰",
-)
+# WAL checkpoint + freelist reclaim cadence between full ingests.
+MAINTENANCE_INTERVAL_S: t.Final[int] = 300
 
 # Module-level flag flipped by ingest dispatch so the title bar can show
 # `[Parsing]`. Assigned by the single _ingest_loop task; safe single-writer.
 _syncing: bool = False
-
-
-def _format_process_ram(rss_bytes: int) -> str:
-    """Compact RAM string for the title bar: '823MB' under 1 GB, '1.4GB' above."""
-    mb = rss_bytes / (1024 * 1024)
-    if mb < 1024:
-        return f"{mb:.0f}MB"
-    return f"{mb / 1024:.1f}GB"
-
-
-async def _title_loop(cfg: AppConfig) -> None:
-    """Animate the console title with version + map + RAM + CPU% + spinner.
-
-    Only runs when frozen on Windows. There's no terminal title to update
-    when running from a Python interpreter, and updating it during dev is
-    noise. Title updates are cosmetic — any failure is swallowed so a
-    transient error never tears the loop down.
-    """
-    if not (IS_FROZEN and IS_WINDOWS):
-        return
-    import ctypes
-
-    set_title = ctypes.windll.kernel32.SetConsoleTitleW
-    frames = cycle(TITLE_BAR_FRAMES)
-    proc = psutil.Process(os.getpid())
-    proc.cpu_percent(interval=None)  # seed so first reading isn't 0.0
-    cpu_count = psutil.cpu_count(logical=True) or 1
-    await asyncio.sleep(1)  # let startup paint first
-
-    while True:
-        try:
-            map_name = cfg.map_file.stem if cfg.map_file else "no map"
-            ram = _format_process_ram(proc.memory_info().rss)
-            cpu = proc.cpu_percent(interval=None) / cpu_count
-            frame = next(frames)
-            title = f"ArkViewer {VERSION} - {map_name} [{ram} | {cpu:.0f}%] {frame}"
-            if _syncing:
-                title += " [Parsing]"
-            set_title(title)
-        except Exception:
-            pass
-        await asyncio.sleep(0.15)
 
 
 def _resolve_config_path() -> Path:
@@ -190,24 +134,35 @@ class Manager:
 
     @staticmethod
     def run() -> None:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        )
+        disable_quickedit()
+        init_logging()
         cfg_path = _resolve_config_path()
         cfg = load_config(cfg_path)
+        reconfigure_logging(cfg.debug)
+        print_banner(cfg.map_file)
         init_schema(cfg.db_path)
 
         if meta_get(cfg.db_path, "last_parse_at") is None and cfg.map_file is not None:
-            log.info("Cold start: triggering initial parse of %s", cfg.map_file)
-            global _syncing
-            _syncing = True
-            try:
-                ingest_full(cfg)
-            except Exception as exc:
-                log.exception("Initial parse failed: %s", exc)
-            finally:
-                _syncing = False
+            if cfg.map_file.exists():
+                log.info("Cold start: triggering initial parse of %s", cfg.map_file)
+                global _syncing
+                _syncing = True
+                try:
+                    ingest_full(cfg)
+                except Exception as exc:
+                    log.exception("Initial parse failed: %s", exc)
+                finally:
+                    _syncing = False
+            else:
+                # Save file not on disk yet — common on fresh ASE installs
+                # before the server has written its first save. Don't fail
+                # the cold-start path; the watcher will pick the file up
+                # the moment ARK creates it.
+                log.warning(
+                    "Map file not yet on disk: %s. Watcher will pick it up "
+                    "when ARK writes it; API serves 503 until then.",
+                    cfg.map_file,
+                )
 
         app = build_app(cfg)
         host = "0.0.0.0"
@@ -229,17 +184,41 @@ class Manager:
             port=cfg.port,
             loop="asyncio",
             log_level="info",
+            # log_config=None makes uvicorn skip its own dictConfig (which
+            # otherwise replaces our colored handlers) — uvicorn.* loggers
+            # then propagate to our root handler and pick up _CompactFormatter.
+            log_config=None,
+            access_log=True,
         )
         server = uvicorn.Server(config)
 
+        async def _maintenance_loop() -> None:
+            """Periodic WAL checkpoint + freelist reclaim between full ingests.
+
+            Skip while an ingest is in flight — `swap_staging` holds an
+            exclusive write lock and `wal_checkpoint(TRUNCATE)` would block
+            on it for up to the busy_timeout window.
+            """
+            while True:
+                await asyncio.sleep(MAINTENANCE_INTERVAL_S)
+                if _syncing:
+                    log.debug("Skipping periodic maintenance: ingest in progress")
+                    continue
+                try:
+                    await asyncio.to_thread(maintenance, cfg.db_path)
+                except Exception as exc:
+                    log.warning("Periodic maintenance failed: %s", exc)
+
         async def _runner() -> None:
             ingest_task = asyncio.create_task(_ingest_loop(cfg, queue))
-            title_task = asyncio.create_task(_title_loop(cfg))
+            title_task = asyncio.create_task(title_loop(cfg.map_file, lambda: _syncing))
+            maint_task = asyncio.create_task(_maintenance_loop())
             try:
                 await server.serve()
             finally:
                 ingest_task.cancel()
                 title_task.cancel()
+                maint_task.cancel()
                 if observer is not None:
                     observer.stop()
                     observer.join()

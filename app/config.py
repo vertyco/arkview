@@ -44,7 +44,17 @@ class AppConfig:
 
 
 def _coerce_path(value: str) -> Path | None:
+    """Coerce an INI string to a Path, tolerating common operator hand-edits.
+
+    Strips surrounding whitespace AND a single pair of matching ASCII quotes
+    (`"..."` or `'...'`) — operators on Windows often paste paths in quotes
+    out of habit, and configparser doesn't unwrap them. Without this, the
+    quotes end up inside the Path string and `Path.exists()` returns False
+    even when the file is sitting on disk where the operator pasted it.
+    """
     value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+        value = value[1:-1].strip()
     return Path(value) if value else None
 
 

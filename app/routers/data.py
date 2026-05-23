@@ -1,4 +1,6 @@
+import asyncio
 import typing as t
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -8,6 +10,17 @@ from app.config import AppConfig
 from app.constants import DATASET_NAMES
 from app.db import aselect_all, aselect_where
 from app.metadata import get_metadata
+
+
+async def _select_all_datasets(db_path: Path) -> dict[str, t.Any]:
+    """Load every dataset serially.
+
+    Parallel reads via `asyncio.gather` would multiply peak RAM by N because
+    each `aselect_all` materializes its table's JSON into a Python list, and
+    the bottleneck is JSON decode + dict growth, not I/O. Serial keeps peak
+    at the largest single table.
+    """
+    return {name: await aselect_all(db_path, name) for name in DATASET_NAMES}
 
 
 class DatasRequest(BaseModel):
@@ -22,15 +35,17 @@ def build_router(cfg: AppConfig) -> APIRouter:
     async def post_datas(req: DatasRequest) -> dict[str, t.Any]:
         if not req.dtypes:
             raise HTTPException(status_code=400, detail="dtypes required")
-        out: dict[str, t.Any] = {}
-        for d in req.dtypes:
-            if d == "all":
-                for name in DATASET_NAMES:
-                    out[name] = await aselect_all(cfg.db_path, name)
-                continue
+        # Validate first so a bad request doesn't trigger an "all" fetch.
+        wanted_named = [d for d in req.dtypes if d != "all"]
+        for d in wanted_named:
             if d not in DATASET_NAMES:
                 raise HTTPException(status_code=404, detail=f"unknown dtype: {d}")
-            out[d] = await aselect_all(cfg.db_path, d)
+        out: dict[str, t.Any] = {}
+        if "all" in req.dtypes:
+            out.update(await _select_all_datasets(cfg.db_path))
+        for d in wanted_named:
+            if d not in out:
+                out[d] = await aselect_all(cfg.db_path, d)
         out.update(await get_metadata(cfg))
         return out
 
@@ -130,14 +145,14 @@ def build_router(cfg: AppConfig) -> APIRouter:
     @router.get("/data/{dtype}")
     async def get_dataset(dtype: str) -> dict[str, t.Any]:
         if dtype == "all":
-            out: dict[str, t.Any] = {}
-            for name in DATASET_NAMES:
-                out[name] = await aselect_all(cfg.db_path, name)
+            out = await _select_all_datasets(cfg.db_path)
             out.update(await get_metadata(cfg))
             return out
         if dtype not in DATASET_NAMES:
             raise HTTPException(status_code=404, detail=f"unknown dtype: {dtype}")
-        rows = await aselect_all(cfg.db_path, dtype)
-        return {dtype: rows, **await get_metadata(cfg)}
+        rows, meta = await asyncio.gather(
+            aselect_all(cfg.db_path, dtype), get_metadata(cfg)
+        )
+        return {dtype: rows, **meta}
 
     return router

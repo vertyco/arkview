@@ -1,12 +1,12 @@
 import logging
-import sqlite3
 import time
 import typing as t
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import AppConfig
-from app.db import batch_insert, meta_set, swap_staging
+from app.constants import ARKPARSER_VERSION
+from app.db import batch_insert, connect, maintenance, meta_set, swap_staging
 
 log = logging.getLogger("arkviewer.ingest")
 
@@ -143,6 +143,16 @@ def _iter_cluster_rows(cfg: AppConfig) -> t.Iterator[dict[str, t.Any]]:
     for path in sorted(cfg.cluster_dir.iterdir()):
         if not path.is_file():
             continue
+        # Empty / stub cluster files are normal: ARK creates them when a
+        # player connects but never uploads anything. Skip silently rather
+        # than spamming WARNING for hundreds of them per parse.
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        if size < 16:
+            log.debug("Skipping empty cluster file %s (%d bytes)", path.name, size)
+            continue
         try:
             cloud = CloudInventory.load(path)
         except Exception as exc:
@@ -174,12 +184,20 @@ def ingest_full(cfg: AppConfig) -> IngestResult:
     # the cluster dir ourselves and stash each file's `to_dict()`. Files
     # are small (one per cluster transfer); read cost is negligible vs
     # the world save parse.
-    ci_rows = list(_iter_cluster_rows(cfg))
-    result.cluster_files = swap_staging(cfg.db_path, "cluster_inventory", iter(ci_rows))
+    result.cluster_files = swap_staging(
+        cfg.db_path, "cluster_inventory", _iter_cluster_rows(cfg)
+    )
 
     meta_set(cfg.db_path, "day", str(day))
     meta_set(cfg.db_path, "time", time_text)
     meta_set(cfg.db_path, "last_parse_at", str(int(time.time())))
+    # Stamp the arkparser version that produced this ingest so the next
+    # boot can detect a version change and auto-wipe the cache.
+    meta_set(cfg.db_path, "arkparser_version", ARKPARSER_VERSION)
+    # Reclaim freelist pages from swap_staging churn + truncate WAL. Without
+    # this the DB file grows unbounded across reparses and a bloated WAL can
+    # cause spurious readonly errors on subsequent profile/tribe writes.
+    maintenance(cfg.db_path)
     result.elapsed_s = time.perf_counter() - t0
     log.info(
         "ingest_full: tamed=%d wild=%d players=%d tribes=%d structures=%d "
@@ -214,12 +232,8 @@ def ingest_profile(cfg: AppConfig, path: Path) -> int:
     if record is None:
         return 0
     pid = int(record.get("playerid") or 0)
-    conn = sqlite3.connect(cfg.db_path)
-    try:
+    with connect(cfg.db_path) as conn:
         conn.execute("DELETE FROM players WHERE playerid=?", (pid,))
-        conn.commit()
-    finally:
-        conn.close()
     batch_insert(cfg.db_path, "players", [_row_for("players", record)])
     return 1
 
@@ -244,13 +258,9 @@ def ingest_tribe(cfg: AppConfig, path: Path) -> int:
     if tribe_row is None:
         return 0
     tid = int(tribe_row.get("tribeid") or 0)
-    conn = sqlite3.connect(cfg.db_path)
-    try:
+    with connect(cfg.db_path) as conn:
         conn.execute("DELETE FROM tribes WHERE tribeid=?", (tid,))
         conn.execute("DELETE FROM tribelogs WHERE tribeid=?", (tid,))
-        conn.commit()
-    finally:
-        conn.close()
     batch_insert(cfg.db_path, "tribes", [_row_for("tribes", tribe_row)])
     if log_row is not None:
         batch_insert(cfg.db_path, "tribelogs", [_row_for("tribelogs", log_row)])

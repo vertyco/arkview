@@ -7,6 +7,8 @@ from pathlib import Path
 
 import aiosqlite
 
+from app.constants import ARKPARSER_VERSION
+
 log = logging.getLogger("arkviewer.db")
 
 META_TABLE: t.Final[str] = "meta"
@@ -15,7 +17,7 @@ META_TABLE: t.Final[str] = "meta"
 # cache (source of truth is the save file); watcher reparses immediately. No
 # migration scripts. PRAGMA user_version is free + atomic + lives in the
 # header, so no `meta` table dependency needed for the version check.
-SCHEMA_VERSION: t.Final[int] = 5
+SCHEMA_VERSION: t.Final[int] = 7
 
 # Tables that get an FTS5 search sidecar. Each gets a `<table>_search` virtual
 # table populated at the end of every ingest swap. The sidecar's rowid mirrors
@@ -149,50 +151,60 @@ _INDEX_COLS: t.Final[dict[str, tuple[str, ...]]] = {
 }
 
 
+# Per-FTS-table column lists. Order matches CREATE VIRTUAL TABLE column order
+# in _SCHEMA_DDL. `_extract_fts_fields` reads these to build the row tuple.
+FTS_COLUMNS: t.Final[dict[str, tuple[str, ...]]] = {
+    "tamed": ("name", "tamer", "imprinter", "tribe", "dinoid"),
+    "structures": ("name", "tribe", "struct"),
+    "players": ("name", "steam", "tribe", "steamid"),
+    "tribes": ("tribe",),
+}
+
+
 def _extract_fts_fields(table: str, raw: dict[str, t.Any]) -> tuple[str, ...]:
     """Pull text fields out of raw JSON for FTS5 indexing.
 
-    Returns values in the order the corresponding `<table>_search` virtual
-    table declares columns. Empty string for missing fields — FTS5 tokenizer
-    ignores them. Order matches CREATE VIRTUAL TABLE column order in
-    `_SCHEMA_DDL` above.
+    Empty string for missing fields — FTS5 tokenizer ignores them.
     """
-    if table == "tamed":
-        return (
-            str(raw.get("name") or ""),
-            str(raw.get("tamer") or ""),
-            str(raw.get("imprinter") or ""),
-            str(raw.get("tribe") or ""),
-            str(raw.get("dinoid") or ""),
-        )
-    if table == "structures":
-        return (
-            str(raw.get("name") or ""),
-            str(raw.get("tribe") or ""),
-            str(raw.get("struct") or ""),
-        )
-    if table == "players":
-        return (
-            str(raw.get("name") or ""),
-            str(raw.get("steam") or ""),
-            str(raw.get("tribe") or ""),
-            str(raw.get("steamid") or ""),
-        )
-    if table == "tribes":
-        return (str(raw.get("tribe") or ""),)
-    raise ValueError(f"no FTS extractor for {table}")
+    cols = FTS_COLUMNS.get(table)
+    if cols is None:
+        raise ValueError(f"no FTS extractor for {table}")
+    return tuple(str(raw.get(c) or "") for c in cols)
+
+
+# Cap WAL size at 64MB. SQLite auto-truncates back to this after every txn
+# commit. One full ingest fits comfortably; the limit only kicks in if a
+# transaction overshoots (then bounded on next commit). Without this the WAL
+# grew unbounded on busy servers and caused spurious "attempt to write a
+# readonly database" errors. Stored in DB header — persistent.
+JOURNAL_SIZE_LIMIT: t.Final[int] = 64 * 1024 * 1024
+
+# 64MB page cache (negative = KB). Default 2MB is too small for 1.4GB+ DBs.
+CACHE_SIZE_KB: t.Final[int] = -64_000
+
+# Indexed columns coerced to 0/1 ints. `uploaded` lives on tamed.
+BOOL_COLS: t.Final[frozenset[str]] = frozenset({"cryo", "tameable", "uploaded"})
+# Indexed columns whose default fill is "" (vs 0 for numeric ids).
+STR_COLS: t.Final[frozenset[str]] = frozenset(
+    {"creature", "struct", "steamid", "file_id"}
+)
 
 
 @contextlib.contextmanager
 def connect(db_path: Path) -> t.Iterator[sqlite3.Connection]:
     assert isinstance(db_path, Path)
-    conn = sqlite3.connect(
-        db_path, isolation_level=None
-    )  # autocommit; we use BEGIN explicitly
+    # PRAGMA busy_timeout=5000 below covers the same window as the constructor
+    # `timeout=` arg, but applies symmetrically to aconnect — keep the PRAGMA
+    # as the single source of truth.
+    conn = sqlite3.connect(db_path, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute(f"PRAGMA cache_size={CACHE_SIZE_KB}")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute(f"PRAGMA journal_size_limit={JOURNAL_SIZE_LIMIT}")
     try:
         yield conn
     finally:
@@ -239,15 +251,37 @@ def init_schema(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     existed = db_path.exists()
     current = _read_user_version(db_path)
+    wipe_reason: str | None = None
     if existed and current != SCHEMA_VERSION:
-        log.warning(
-            "Schema version mismatch (db=%d, code=%d). Wiping %s.",
-            current,
-            SCHEMA_VERSION,
-            db_path,
-        )
+        wipe_reason = f"schema version (db={current}, code={SCHEMA_VERSION})"
+    if existed and wipe_reason is None:
+        # Wipe when arkparser version differs from what produced the cached
+        # rows — output shape can change between versions (e.g. 0.4.1 `lvl`
+        # int-not-empty-string fix) and the cache holds whatever was emitted
+        # at last parse. Auto-invalidating means a plain arkparser bump +
+        # restart suffices; no manual DB deletion.
+        try:
+            with connect(db_path) as conn:
+                row = conn.execute(
+                    "SELECT value FROM meta WHERE key='arkparser_version'"
+                ).fetchone()
+                stored_ap = row["value"] if row else None
+        except sqlite3.OperationalError:
+            stored_ap = None
+        if stored_ap is not None and stored_ap != ARKPARSER_VERSION:
+            wipe_reason = (
+                f"arkparser version (db={stored_ap}, code={ARKPARSER_VERSION})"
+            )
+    if wipe_reason is not None:
+        log.warning("Cache invalidated — %s. Wiping %s.", wipe_reason, db_path)
         _wipe_db(db_path)
+    fresh = not db_path.exists()
     with connect(db_path) as conn:
+        if fresh:
+            # auto_vacuum must be set before any tables exist. INCREMENTAL keeps
+            # freelist pages reclaimable on demand (we call incremental_vacuum
+            # after every full ingest) without the cost of FULL auto_vacuum.
+            conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
         conn.executescript(_SCHEMA_DDL)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -256,10 +290,8 @@ def _row_to_params(table: str, row: dict[str, t.Any]) -> dict[str, t.Any]:
     cols = _INDEX_COLS[table]
     out: dict[str, t.Any] = {}
     for c in cols:
-        v = row.get(
-            c, 0 if c not in ("creature", "struct", "steamid", "file_id") else ""
-        )
-        if c == "cryo" or c == "tameable":
+        v = row.get(c, "" if c in STR_COLS else 0)
+        if c in BOOL_COLS:
             v = 1 if v else 0
         out[c] = v
     raw = row.get("raw", {})
@@ -268,24 +300,50 @@ def _row_to_params(table: str, row: dict[str, t.Any]) -> dict[str, t.Any]:
 
 
 def batch_insert(db_path: Path, table: str, rows: t.Iterable[dict[str, t.Any]]) -> int:
+    """Insert rows into `table`. Retries once on transient `readonly` errors.
+
+    Observation: after long-running ingests on Windows, the WAL can grow large
+    enough that subsequent connections sporadically see
+    `OperationalError: attempt to write a readonly database` for a single
+    operation. Reopening the connection + checkpointing the WAL clears it.
+    Materialize rows up front so the retry can replay them.
+    """
     assert table in DATASET_TABLES, f"unknown table {table}"
     cols = _INDEX_COLS[table]
     placeholders = ", ".join(f":{c}" for c in cols) + ", :raw"
     column_list = ", ".join(cols) + ", raw"
     sql = f"INSERT INTO {table} ({column_list}) VALUES ({placeholders})"
-    count = 0
-    with connect(db_path) as conn:
-        conn.execute("BEGIN")
-        try:
-            for chunk in _chunked(rows, 500):
-                params = [_row_to_params(table, r) for r in chunk]
-                conn.executemany(sql, params)
-                count += len(params)
-            conn.execute("COMMIT")
-        except Exception:
-            conn.execute("ROLLBACK")
+    materialized = list(rows)
+
+    def _do_insert() -> int:
+        n = 0
+        with connect(db_path) as conn:
+            conn.execute("BEGIN")
+            try:
+                for chunk in _chunked(iter(materialized), 500):
+                    params = [_row_to_params(table, r) for r in chunk]
+                    conn.executemany(sql, params)
+                    n += len(params)
+                conn.execute("COMMIT")
+            except sqlite3.Error:
+                conn.execute("ROLLBACK")
+                raise
+        return n
+
+    try:
+        return _do_insert()
+    except sqlite3.OperationalError as exc:
+        if "readonly" not in str(exc).lower():
             raise
-    return count
+        log.warning(
+            "batch_insert(%s): readonly DB, attempting WAL checkpoint + retry", table
+        )
+        try:
+            with connect(db_path) as conn:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.OperationalError as cp_exc:
+            log.warning("batch_insert retry checkpoint failed: %s", cp_exc)
+        return _do_insert()
 
 
 def swap_staging(db_path: Path, table: str, rows: t.Iterable[dict[str, t.Any]]) -> int:
@@ -327,7 +385,7 @@ def swap_staging(db_path: Path, table: str, rows: t.Iterable[dict[str, t.Any]]) 
             if table in FTS_TABLES:
                 _rebuild_fts_inside_txn(conn, table)
             conn.execute("COMMIT")
-        except Exception:
+        except sqlite3.Error:
             conn.execute("ROLLBACK")
             raise
     return count
@@ -342,12 +400,13 @@ def _rebuild_fts_inside_txn(conn: sqlite3.Connection, table: str) -> None:
     the constrained party.
     """
     fts = f"{table}_search"
+    cols = FTS_COLUMNS[table]
     conn.execute(f"DELETE FROM {fts}")
     cur = conn.execute(f"SELECT rowid, raw FROM {table}")
-    col_count = len(_extract_fts_fields(table, {}))
-    placeholders = ", ".join("?" for _ in range(col_count))
+    placeholders = ", ".join("?" for _ in cols)
+    column_list = ", ".join(cols)
     # Insert with explicit rowid so we can JOIN back: tamed_search.rowid = tamed.rowid.
-    insert_sql = f"INSERT INTO {fts}(rowid, {_fts_column_list(table)}) VALUES (?, {placeholders})"
+    insert_sql = f"INSERT INTO {fts}(rowid, {column_list}) VALUES (?, {placeholders})"
     batch: list[tuple[t.Any, ...]] = []
     for row in cur:
         try:
@@ -363,17 +422,24 @@ def _rebuild_fts_inside_txn(conn: sqlite3.Connection, table: str) -> None:
         conn.executemany(insert_sql, batch)
 
 
-def _fts_column_list(table: str) -> str:
-    """Comma-separated FTS5 column names for INSERT statements."""
-    if table == "tamed":
-        return "name, tamer, imprinter, tribe, dinoid"
-    if table == "structures":
-        return "name, tribe, struct"
-    if table == "players":
-        return "name, steam, tribe, steamid"
-    if table == "tribes":
-        return "tribe"
-    raise ValueError(f"no FTS columns for {table}")
+def maintenance(db_path: Path) -> None:
+    """Reclaim freelist pages and truncate the WAL after a full ingest.
+
+    `swap_staging` drops + recreates tables which leaves the freelist huge,
+    and the WAL grows during the long ingest transaction. Without this the
+    on-disk file grows unbounded (1.4 GB+ observed after one overnight on a
+    busy server) and a too-large WAL has been seen to put the DB into a
+    transient readonly state when journal rotation can't keep up.
+
+    Both pragmas are idempotent + cheap when there's nothing to reclaim.
+    """
+    assert isinstance(db_path, Path)
+    with connect(db_path) as conn:
+        try:
+            conn.execute("PRAGMA incremental_vacuum")
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.OperationalError as exc:
+            log.warning("maintenance: %s", exc)
 
 
 def meta_set(db_path: Path, key: str, value: str) -> None:
@@ -426,6 +492,10 @@ async def aconnect(db_path: Path) -> t.AsyncIterator[aiosqlite.Connection]:
         await conn.execute("PRAGMA foreign_keys=ON")
         await conn.execute("PRAGMA journal_mode=WAL")
         await conn.execute("PRAGMA synchronous=NORMAL")
+        await conn.execute("PRAGMA temp_store=MEMORY")
+        await conn.execute(f"PRAGMA cache_size={CACHE_SIZE_KB}")
+        await conn.execute("PRAGMA busy_timeout=5000")
+        await conn.execute(f"PRAGMA journal_size_limit={JOURNAL_SIZE_LIMIT}")
         yield conn
     finally:
         await conn.close()

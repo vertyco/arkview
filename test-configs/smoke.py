@@ -153,6 +153,38 @@ def main() -> int:
     )
     failures += 0 if rr.status_code == 200 else 1
 
+    print("-- Search endpoints (FTS5) --")
+    # Empty q → exact-filter-only (or all-rows when no filter). Validates the
+    # join + bm25 path with a real corpus.
+    for path in (
+        "/data/search/tamed?q=",
+        "/data/search/tamed?q=&include_cryo=false",
+        "/data/search/structures?q=",
+        "/data/search/players?q=",
+        "/data/search/tribes?q=",
+    ):
+        rr = client.get(path)
+        key = path.split("?")[0].rsplit("/", 1)[-1]
+        rows = rr.json().get(key, []) if rr.status_code == 200 else []
+        marker = "ok" if rr.status_code == 200 else "FAIL"
+        print(f"  [{marker}] {path:48s} -> {rr.status_code}  rows={len(rows)}")
+        failures += 0 if rr.status_code == 200 else 1
+    # Sample query: take first tamed name from the dataset, search for a prefix.
+    rr = client.get("/data/tamed")
+    sample_name = ""
+    for row in rr.json().get("tamed", []):
+        if row.get("name"):
+            sample_name = row["name"]
+            break
+    if sample_name:
+        q = sample_name[: max(3, len(sample_name) // 2)].split()[0]
+        rr = client.get(f"/data/search/tamed?q={q}")
+        hits = rr.json().get("tamed", []) if rr.status_code == 200 else []
+        print(
+            f"  [{'ok' if hits else 'FAIL'}] /data/search/tamed?q={q!r:20} -> {rr.status_code}  hits={len(hits)} (sample={sample_name!r})"
+        )
+        failures += 0 if hits else 1
+
     print("-- Stale header check (force last_parse_at to 7h ago) --")
     meta_set(cfg.db_path, "last_parse_at", str(int(time.time()) - 7 * 3600))
     rr = client.get("/data/tamed")
