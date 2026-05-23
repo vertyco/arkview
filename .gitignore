@@ -106,6 +106,9 @@ celerybeat.pid
 # Environments
 .env
 .venv
+
+# Local build script with embedded GitHub token — untracked, contains secrets
+build.py
 env/
 venv/
 ENV/
