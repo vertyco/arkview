@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.config import AppConfig
 from app.constants import ARKPARSER_VERSION
-from app.db import maintenance, meta_set, replace_by_key, swap_staging
+from app.db import maintenance, meta_get, meta_set, replace_by_key, swap_staging
 
 log = logging.getLogger("arkviewer.ingest")
 
@@ -106,12 +106,15 @@ def _load_world(cfg: AppConfig) -> tuple[t.Any, t.Any, int, str]:
         len(tribes),
         map_dir,
     )
-    assert save is not None
 
     game_time = float(save.game_time)
     day = int(game_time // 86400)
     rem = int(game_time % 86400)
     h, m = rem // 3600, (rem % 3600) // 60
+    # Postcondition: a non-negative in-game day. A negative value means a
+    # corrupt/garbage game_time slipped through the parser (WorldSave.load is
+    # typed to return a WorldSave, so a None-guard here would be dead code).
+    assert day >= 0, "in-game day must be non-negative"
     return save, map_config, day, f"{h:02d}:{m:02d}"
 
 
@@ -148,7 +151,9 @@ def _load_cluster_invs(cfg: AppConfig) -> list[tuple[str, t.Any]]:
             log.warning(
                 "Skipping cluster file %s: %s: %s", path.name, type(exc).__name__, exc
             )
-    assert isinstance(out, list)
+    # Postcondition: every entry is keyed by its file stem (str) — the join key
+    # the /data/cluster route and the player-upload splice both depend on.
+    assert all(isinstance(fid, str) for fid, _ in out), "file_id must be str"
     return out
 
 
@@ -161,8 +166,9 @@ def ingest_full(cfg: AppConfig) -> IngestResult:
     and the `/data/cluster` rows.
 
     Pre: `cfg.map_file` is set.
-    Post: every dataset table swapped atomically; meta updated; on success the
-    `reparse_pending` upgrade flag is cleared.
+    Post: each dataset table swapped atomically (one transaction per table, not
+    all tables as a group); meta updated; on success the `reparse_pending`
+    upgrade flag is cleared.
     """
     assert cfg.map_file is not None
     from arkparser import (
@@ -264,6 +270,10 @@ def ingest_full(cfg: AppConfig) -> IngestResult:
         result.cluster_files,
         result.elapsed_s,
     )
+    # Postcondition: the completion marker persisted. A silent meta-write
+    # failure would otherwise leave the staleness middleware serving 503
+    # forever (it gates on last_parse_at being present).
+    assert meta_get(cfg.db_path, "last_parse_at") is not None
     return result
 
 
