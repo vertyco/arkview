@@ -158,6 +158,8 @@ def test_schema_bump_wipes(tmp_path: Path) -> None:
         n = conn.execute("SELECT COUNT(*) AS c FROM tamed").fetchone()["c"]
     assert n == 0, "schema mismatch must wipe"
     assert meta_get(db, "last_parse_at") is None
+    # A wipe deletes the DB file entirely, so no stale reparse flag survives.
+    assert meta_get(db, "reparse_pending") is None
 
 
 def test_same_versions_no_wipe_no_flag(tmp_path: Path) -> None:

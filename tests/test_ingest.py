@@ -157,6 +157,10 @@ def test_ingest_full_updates_meta(tmp_path: Path) -> None:
     assert meta_get(cfg.db_path, "time") == "12:00"
     assert meta_get(cfg.db_path, "last_parse_at") is not None
     int(meta_get(cfg.db_path, "last_parse_at"))  # parseable epoch seconds
+    # Clearing reparse_pending on success is the other half of the arkparser-
+    # upgrade lifecycle (init_schema sets "1"); without it a flagged DB would
+    # reparse on every boot forever.
+    assert meta_get(cfg.db_path, "reparse_pending") == "0"
 
 
 def test_ingest_full_swap_replaces_old(tmp_path: Path) -> None:
