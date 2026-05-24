@@ -238,3 +238,16 @@ def test_load_cluster_invs_skips_sub16_byte_stubs(tmp_path: Path) -> None:
 
 def test_load_cluster_invs_none_dir_returns_empty(tmp_path: Path) -> None:
     assert _load_cluster_invs(_cfg(tmp_path, None)) == []
+
+
+def test_load_cluster_invs_skips_unparsable_file(tmp_path: Path) -> None:
+    # A >=16-byte file passes the stub gate but fails CloudInventory.load — it
+    # must be skipped (warning logged), not raised, so one corrupt cluster file
+    # can't abort the whole reparse. This is the path that emits the production
+    # "Attempted to read N bytes" warnings.
+    cdir = tmp_path / "clusters"
+    cdir.mkdir()
+    (cdir / "corrupt").write_bytes(b"\x00" * 64)  # >=16 bytes → reaches .load
+    with patch("arkparser.CloudInventory.load", side_effect=ValueError("boom")):
+        result = _load_cluster_invs(_cfg(tmp_path, cdir))
+    assert result == []
