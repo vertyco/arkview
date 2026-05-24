@@ -105,3 +105,68 @@ def test_raw_json_column_roundtrip(tmp_path: Path) -> None:
     with connect(db_path) as conn:
         row = conn.execute("SELECT raw FROM tamed").fetchone()
     assert json.loads(row["raw"]) == payload
+
+
+# ---------------------------------------------------------------------------
+# Version-mismatch behaviour tests
+# ---------------------------------------------------------------------------
+
+
+from app.constants import ARKPARSER_VERSION  # noqa: E402
+from app.db import SCHEMA_VERSION  # noqa: E402
+
+
+def _seed_db(db_path: Path, *, user_version: int, arkparser_version: str) -> None:
+    """Create a schema DB then force its stored versions + a sentinel row."""
+    init_schema(db_path)
+    meta_set(db_path, "arkparser_version", arkparser_version)
+    meta_set(db_path, "last_parse_at", "1000")
+    with connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO tamed (tribeid, creature, lvl, cryo, uploaded, raw) "
+            "VALUES (1, 'Rex', 100, 0, 0, '{}')"
+        )
+    raw = sqlite3.connect(db_path)
+    try:
+        raw.execute(f"PRAGMA user_version = {user_version}")
+    finally:
+        raw.commit()
+        raw.close()
+
+
+def test_arkparser_bump_keeps_data_and_flags_reparse(tmp_path: Path) -> None:
+    db = tmp_path / "v.db"
+    _seed_db(db, user_version=SCHEMA_VERSION, arkparser_version="0.0.1-old")
+
+    init_schema(db)  # boot after an arkparser upgrade
+
+    with connect(db) as conn:
+        n = conn.execute("SELECT COUNT(*) AS c FROM tamed").fetchone()["c"]
+    assert n == 1, "arkparser bump must NOT wipe cached rows"
+    assert meta_get(db, "last_parse_at") == "1000", "must keep serving (no 503)"
+    assert meta_get(db, "reparse_pending") == "1"
+    assert meta_get(db, "arkparser_version") == ARKPARSER_VERSION
+
+
+def test_schema_bump_wipes(tmp_path: Path) -> None:
+    db = tmp_path / "v.db"
+    _seed_db(db, user_version=SCHEMA_VERSION - 1, arkparser_version=ARKPARSER_VERSION)
+
+    init_schema(db)  # boot after a schema change
+
+    with connect(db) as conn:
+        n = conn.execute("SELECT COUNT(*) AS c FROM tamed").fetchone()["c"]
+    assert n == 0, "schema mismatch must wipe"
+    assert meta_get(db, "last_parse_at") is None
+
+
+def test_same_versions_no_wipe_no_flag(tmp_path: Path) -> None:
+    db = tmp_path / "v.db"
+    _seed_db(db, user_version=SCHEMA_VERSION, arkparser_version=ARKPARSER_VERSION)
+
+    init_schema(db)
+
+    with connect(db) as conn:
+        n = conn.execute("SELECT COUNT(*) AS c FROM tamed").fetchone()["c"]
+    assert n == 1
+    assert meta_get(db, "reparse_pending") in (None, "0")

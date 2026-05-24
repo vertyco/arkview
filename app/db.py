@@ -238,31 +238,29 @@ def _wipe_db(db_path: Path) -> None:
 
 
 def init_schema(db_path: Path) -> None:
-    """Create or recreate the schema, wiping on SCHEMA_VERSION mismatch.
+    """Create or recreate the schema, handling version mismatches.
 
-    DB is a cache, not a system of record. Schema mismatches → wipe + rebuild
-    rather than risk migration bugs. Cold start serves 503 until next reparse.
+    Schema mismatch (PRAGMA user_version != SCHEMA_VERSION): table shapes
+    changed — old rows cannot be reused, so we wipe + rebuild. Cold start
+    serves 503 until the next reparse.
 
-    Any pre-existing DB whose `PRAGMA user_version` doesn't match the code's
-    SCHEMA_VERSION gets wiped — including legacy DBs at version 0 (which
-    never set `user_version` in earlier arkviewer builds). Truly-fresh paths
-    (no file on disk) skip the wipe.
+    arkparser version mismatch: table shapes are unchanged; cached rows are
+    still valid ASV JSON. We keep serving them (no cold-start 503) and set
+    `reparse_pending = '1'` so the watcher queues a background refresh.
+
+    Truly-fresh paths (no file on disk) skip the wipe check.
     """
     assert isinstance(db_path, Path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     existed = db_path.exists()
     current = _read_user_version(db_path)
-    wipe_reason: str | None = None
-    if existed and current != SCHEMA_VERSION:
-        wipe_reason = f"schema version (db={current}, code={SCHEMA_VERSION})"
-    if existed and wipe_reason is None:
-        # Wipe when arkparser version differs from what produced the cached
-        # rows — output shape can change between versions (e.g. 0.4.1 `lvl`
-        # int-not-empty-string fix) and the cache holds whatever was emitted
-        # at last parse. The version is stamped at the end of this function
-        # (and re-stamped after each full ingest), so a plain arkparser bump +
-        # restart suffices; no manual DB deletion. The `is not None` guard
-        # below still tolerates pre-stamp legacy DBs.
+    # A schema mismatch changes table shapes — old rows can't be reused, so we
+    # wipe. An arkparser-version mismatch does NOT change table shapes; the
+    # cached rows are still valid ASV JSON, so keep serving them and refresh in
+    # the background (set reparse_pending below) to avoid a cold-start 503.
+    schema_wipe = existed and current != SCHEMA_VERSION
+    arkparser_stale = False
+    if existed and not schema_wipe:
         try:
             with connect(db_path) as conn:
                 row = conn.execute(
@@ -271,12 +269,21 @@ def init_schema(db_path: Path) -> None:
                 stored_ap = row["value"] if row else None
         except sqlite3.OperationalError:
             stored_ap = None
-        if stored_ap is not None and stored_ap != ARKPARSER_VERSION:
-            wipe_reason = (
-                f"arkparser version (db={stored_ap}, code={ARKPARSER_VERSION})"
+        arkparser_stale = stored_ap is not None and stored_ap != ARKPARSER_VERSION
+        if arkparser_stale:
+            log.info(
+                "arkparser version changed (db=%s, code=%s) — keeping cached "
+                "data, queuing background reparse (no cold-start outage).",
+                stored_ap,
+                ARKPARSER_VERSION,
             )
-    if wipe_reason is not None:
-        log.warning("Cache invalidated — %s. Wiping %s.", wipe_reason, db_path)
+    if schema_wipe:
+        log.warning(
+            "Cache invalidated — schema version (db=%d, code=%d). Wiping %s.",
+            current,
+            SCHEMA_VERSION,
+            db_path,
+        )
         _wipe_db(db_path)
     fresh = not db_path.exists()
     with connect(db_path) as conn:
@@ -287,14 +294,21 @@ def init_schema(db_path: Path) -> None:
             conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
         conn.executescript(_SCHEMA_DDL)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-        # Stamp the arkparser version now (not only after the first full
-        # ingest) so the next boot can detect an upgrade and auto-wipe even if
-        # this process crashes before any ingest completes.
+        # Stamp the arkparser version now (not only after the first full ingest)
+        # so the next boot can detect an upgrade even if this process crashes
+        # before any ingest completes.
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('arkparser_version', ?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (ARKPARSER_VERSION,),
         )
+        # Drive a background reparse so the kept (old-arkparser) rows are
+        # refreshed. ingest_full clears this to "0" when fresh data lands.
+        if arkparser_stale:
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES('reparse_pending', '1') "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+            )
 
 
 def _row_to_params(table: str, row: dict[str, t.Any]) -> dict[str, t.Any]:
