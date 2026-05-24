@@ -64,6 +64,22 @@ def _scope_for(cfg: AppConfig, path: Path) -> IngestScope | None:
     return None
 
 
+def _needs_cold_start(db_path: Path) -> bool:
+    """True when boot should queue a full parse.
+
+    - `last_parse_at` is None → empty DB (fresh install or schema wipe) → parse.
+    - `reparse_pending == "1"` → arkparser was upgraded; cached data is still
+      served (no 503), but a background reparse must refresh it. init_schema
+      sets the flag; ingest_full clears it.
+
+    Pre: schema initialised (meta table exists).
+    """
+    assert isinstance(db_path, Path)
+    if meta_get(db_path, "last_parse_at") is None:
+        return True
+    return meta_get(db_path, "reparse_pending") == "1"
+
+
 def build_app(cfg: AppConfig) -> FastAPI:
     app = FastAPI(title="ArkViewer", version=VERSION)
     app.add_middleware(StalenessMiddleware, db_path=cfg.db_path)
@@ -169,9 +185,11 @@ class Manager:
         # until the parse lands, and the title bar animates `[Parsing]`. Routing
         # through the queue also reuses `wait_for_stable`, so a save mid-write
         # at boot can't cause a truncated read.
-        if meta_get(cfg.db_path, "last_parse_at") is None and cfg.map_file is not None:
+        if cfg.map_file is not None and _needs_cold_start(cfg.db_path):
             if cfg.map_file.exists():
-                log.info("Cold start: queuing initial parse of %s", cfg.map_file)
+                log.info(
+                    "Cold start / upgrade reparse: queuing parse of %s", cfg.map_file
+                )
                 queue.put_nowait(cfg.map_file)
             else:
                 # Save file not on disk yet — common on fresh ASE installs
