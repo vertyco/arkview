@@ -11,17 +11,6 @@ from app.db import maintenance, meta_set, replace_by_key, swap_staging
 log = logging.getLogger("arkviewer.ingest")
 
 
-ASV_TO_TABLE: t.Final[dict[str, str]] = {
-    "ASV_Tamed": "tamed",
-    "ASV_Wild": "wild",
-    "ASV_Players": "players",
-    "ASV_Tribes": "tribes",
-    "ASV_Structures": "structures",
-    "ASV_TribeLogs": "tribelogs",
-    "ASV_MapStructures": "mapstructures",
-}
-
-
 @dataclass(slots=True)
 class IngestResult:
     tamed: int = 0
@@ -75,18 +64,19 @@ def _row_for(table: str, asv: dict[str, t.Any]) -> dict[str, t.Any]:
     return out
 
 
-def _load_world_and_export(
-    cfg: AppConfig,
-) -> tuple[dict[str, list[dict[str, t.Any]]], int, str]:
-    """Load the world save + sidecar profile/tribe files; return (export_dict, day, time).
+def _load_world(cfg: AppConfig) -> tuple[t.Any, t.Any, int, str]:
+    """Load the world save + sidecar profiles/tribes; return the LIVE save.
 
-    `export_all` reads `save.profiles` and `save.tribes` lists which the
-    caller must assemble. We glob `*.arkprofile` and `*.arktribe` from the
-    map's directory and inject them onto the WorldSave instance before the
-    export runs. `.arktributetribe` files use a different binary format and
-    are skipped - arkparser raises on them.
+    Unlike the old `_load_world_and_export`, this does NOT call `export_all`.
+    It returns the live `WorldSave` so `ingest_full` can export ONE dataset at
+    a time and free it before building the next — capping peak RAM at
+    (object graph + one dataset) instead of (object graph + all datasets).
+
+    Pre: `cfg.map_file` is set and on disk.
+    Post: returns (save, map_config, day, time_text); `save.profiles` and
+    `save.tribes` are populated for the player/tribe exporters.
     """
-    from arkparser import Profile, Tribe, WorldSave, export_all
+    from arkparser import Profile, Tribe, WorldSave
     from arkparser.common import get_map_config
 
     assert cfg.map_file is not None, "map_file required for world ingest"
@@ -116,36 +106,35 @@ def _load_world_and_export(
         len(tribes),
         map_dir,
     )
-
-    cluster = (
-        str(cfg.cluster_dir) if cfg.cluster_dir and cfg.cluster_dir.exists() else None
-    )
-    data = export_all(save, map_config, cluster=cluster)
+    assert save is not None
 
     game_time = float(save.game_time)
     day = int(game_time // 86400)
     rem = int(game_time % 86400)
     h, m = rem // 3600, (rem % 3600) // 60
-    del save
-    return data, day, f"{h:02d}:{m:02d}"
+    return save, map_config, day, f"{h:02d}:{m:02d}"
 
 
-def _iter_cluster_rows(cfg: AppConfig) -> t.Iterator[dict[str, t.Any]]:
-    """Walk `cfg.cluster_dir`, yield {file_id, raw} for each CloudInventory.
+def _load_cluster_invs(cfg: AppConfig) -> list[tuple[str, t.Any]]:
+    """Parse every cluster file ONCE; return (file_id, CloudInventory) pairs.
+
+    The old path parsed cluster files twice per reparse — once inside
+    arkparser's `export_all(cluster=dir)` and again in `_iter_cluster_rows`.
+    We parse once here and reuse the same instances for the tamed splice, the
+    players splice, and the `/data/cluster` rows.
 
     Pre: `cfg.cluster_dir` may be None.
-    Post: yields one dict per parsable file; logs and skips unparsable.
+    Post: one pair per parsable file; stub (<16 byte) and unparsable files are
+    skipped (debug for stubs, warning for parse errors — same policy as before).
     """
     from arkparser import CloudInventory
 
+    out: list[tuple[str, t.Any]] = []
     if cfg.cluster_dir is None or not cfg.cluster_dir.exists():
-        return
+        return out
     for path in sorted(cfg.cluster_dir.iterdir()):
         if not path.is_file():
             continue
-        # Empty / stub cluster files are normal: ARK creates them when a
-        # player connects but never uploads anything. Skip silently rather
-        # than spamming WARNING for hundreds of them per parse.
         try:
             size = path.stat().st_size
         except OSError:
@@ -154,49 +143,112 @@ def _iter_cluster_rows(cfg: AppConfig) -> t.Iterator[dict[str, t.Any]]:
             log.debug("Skipping empty cluster file %s (%d bytes)", path.name, size)
             continue
         try:
-            cloud = CloudInventory.load(path)
+            out.append((path.stem, CloudInventory.load(path)))
         except Exception as exc:
             log.warning(
-                "Skipping cluster file %s: %s: %s",
-                path.name,
-                type(exc).__name__,
-                exc,
+                "Skipping cluster file %s: %s: %s", path.name, type(exc).__name__, exc
             )
-            continue
-        yield {"file_id": path.stem, "raw": cloud.to_dict()}
+    assert isinstance(out, list)
+    return out
 
 
 def ingest_full(cfg: AppConfig) -> IngestResult:
-    """Full reparse: world save + cluster, swap all dataset tables atomically."""
+    """Full reparse: stream each dataset to its table, freeing between types.
+
+    Peak RAM = WorldSave object graph + the single largest dataset list at a
+    time (not all seven at once, as the old `export_all` dict held). Cluster
+    files are parsed once and reused for the tamed splice, the players splice,
+    and the `/data/cluster` rows.
+
+    Pre: `cfg.map_file` is set.
+    Post: every dataset table swapped atomically; meta updated; on success the
+    `reparse_pending` upgrade flag is cleared.
+    """
     assert cfg.map_file is not None
-    t0 = time.perf_counter()
-    data, day, time_text = _load_world_and_export(cfg)
-
-    result = IngestResult()
-    for asv_key, table in ASV_TO_TABLE.items():
-        rows = (_row_for(table, asv) for asv in data.get(asv_key, []))
-        n = swap_staging(cfg.db_path, table, rows)
-        setattr(result, table, n)
-
-    # Cluster inventory: arkparser's `export_all` only folds cluster
-    # uploads into `ASV_Tamed` (with `cryo=true`). To expose the raw
-    # per-file CloudInventory contents at `/data/cluster/{file_id}`, walk
-    # the cluster dir ourselves and stash each file's `to_dict()`. Files
-    # are small (one per cluster transfer); read cost is negligible vs
-    # the world save parse.
-    result.cluster_files = swap_staging(
-        cfg.db_path, "cluster_inventory", _iter_cluster_rows(cfg)
+    from arkparser import (
+        export_cluster_uploads,
+        export_map_structures,
+        export_players,
+        export_structures,
+        export_tamed,
+        export_tribe_logs,
+        export_tribes,
+        export_wild,
     )
+
+    t0 = time.perf_counter()
+    save, map_config, day, time_text = _load_world(cfg)
+    cluster_invs = _load_cluster_invs(cfg)
+    invs = [inv for _, inv in cluster_invs]
+    result = IngestResult()
+
+    # Tamed = in-world tames + cluster-uploaded tames. Use `+=` (in-place
+    # extend) not `tamed + ...` so we never hold two copies of the tamed list.
+    tamed = export_tamed(save, map_config)
+    if invs:
+        tamed += export_cluster_uploads(invs, map_config)
+    result.tamed = swap_staging(
+        cfg.db_path, "tamed", (_row_for("tamed", asv) for asv in tamed)
+    )
+    del tamed
+
+    # Players need the cluster inventories for upload splicing; do players then
+    # the raw /data/cluster rows, then free the inventories before the big
+    # wild/structures lists so cluster never coexists with them.
+    result.players = swap_staging(
+        cfg.db_path,
+        "players",
+        (
+            _row_for("players", asv)
+            for asv in export_players(save, map_config, invs or None)
+        ),
+    )
+    result.cluster_files = swap_staging(
+        cfg.db_path,
+        "cluster_inventory",
+        ({"file_id": fid, "raw": inv.to_dict()} for fid, inv in cluster_invs),
+    )
+    del cluster_invs, invs
+
+    result.wild = swap_staging(
+        cfg.db_path,
+        "wild",
+        (_row_for("wild", asv) for asv in export_wild(save, map_config)),
+    )
+    result.structures = swap_staging(
+        cfg.db_path,
+        "structures",
+        (_row_for("structures", asv) for asv in export_structures(save, map_config)),
+    )
+    result.tribes = swap_staging(
+        cfg.db_path, "tribes", (_row_for("tribes", asv) for asv in export_tribes(save))
+    )
+    result.tribelogs = swap_staging(
+        cfg.db_path,
+        "tribelogs",
+        (_row_for("tribelogs", asv) for asv in export_tribe_logs(save)),
+    )
+    result.mapstructures = swap_staging(
+        cfg.db_path,
+        "mapstructures",
+        (
+            _row_for("mapstructures", asv)
+            for asv in export_map_structures(save, map_config)
+        ),
+    )
+    del save
 
     meta_set(cfg.db_path, "day", str(day))
     meta_set(cfg.db_path, "time", time_text)
     meta_set(cfg.db_path, "last_parse_at", str(int(time.time())))
-    # Stamp the arkparser version that produced this ingest so the next
-    # boot can detect a version change and auto-wipe the cache.
+    # Stamp the arkparser version that produced this ingest so the next boot
+    # can detect a version change.
     meta_set(cfg.db_path, "arkparser_version", ARKPARSER_VERSION)
-    # Reclaim freelist pages from swap_staging churn + truncate WAL. Without
-    # this the DB file grows unbounded across reparses and a bloated WAL can
-    # cause spurious readonly errors on subsequent profile/tribe writes.
+    # Fresh data has landed: clear the upgrade-reparse flag (init_schema sets it
+    # to "1" on an arkparser version bump so the cached data is refreshed
+    # without a cold-start 503).
+    meta_set(cfg.db_path, "reparse_pending", "0")
+    # Reclaim freelist pages from swap churn + truncate WAL.
     maintenance(cfg.db_path)
     result.elapsed_s = time.perf_counter() - t0
     log.info(

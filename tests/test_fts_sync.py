@@ -7,7 +7,9 @@ reuse — the WRONG row between full world reparses.
 """
 
 import typing as t  # noqa: F401
+from contextlib import ExitStack
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -32,13 +34,38 @@ def _cfg(tmp_path: Path) -> AppConfig:
     )
 
 
-def _export(player_name: str, tribe_name: str) -> dict[str, t.Any]:
-    return {
-        "ASV_Players": [
-            {"playerid": 7, "steamid": "abc", "tribeid": 3, "name": player_name},
-        ],
-        "ASV_Tribes": [{"tribeid": 3, "tribe": tribe_name}],
-    }
+def _ingest_patches(
+    player_name: str, tribe_name: str, day: int = 1, time_text: str = "00:00"
+) -> list[t.Any]:
+    """Return patches for _load_world + all arkparser export functions.
+
+    ingest_full uses inline `from arkparser import ...` so we patch at
+    `arkparser.<func>` (the module ingest_full imports from at call time).
+    """
+    fake_save = MagicMock()
+    fake_mc = MagicMock()
+    return [
+        patch(
+            "app.ingest._load_world", return_value=(fake_save, fake_mc, day, time_text)
+        ),
+        patch("app.ingest._load_cluster_invs", return_value=[]),
+        patch("arkparser.export_tamed", return_value=[]),
+        patch(
+            "arkparser.export_players",
+            return_value=[
+                {"playerid": 7, "steamid": "abc", "tribeid": 3, "name": player_name}
+            ],
+        ),
+        patch(
+            "arkparser.export_tribes",
+            return_value=[{"tribeid": 3, "tribe": tribe_name}],
+        ),
+        patch("arkparser.export_wild", return_value=[]),
+        patch("arkparser.export_structures", return_value=[]),
+        patch("arkparser.export_tribe_logs", return_value=[]),
+        patch("arkparser.export_map_structures", return_value=[]),
+        patch("arkparser.export_cluster_uploads", return_value=[]),
+    ]
 
 
 async def test_profile_reparse_updates_player_search(
@@ -46,11 +73,10 @@ async def test_profile_reparse_updates_player_search(
 ) -> None:
     cfg = _cfg(tmp_path)
     init_schema(cfg.db_path)
-    monkeypatch.setattr(
-        "app.ingest._load_world_and_export",
-        lambda _cfg: (_export("OldName", "Alpha"), 1, "00:00"),
-    )
-    ingest_full(cfg)
+    with ExitStack() as stack:
+        for p in _ingest_patches("OldName", "Alpha"):
+            stack.enter_context(p)
+        ingest_full(cfg)
     assert len(await asearch(cfg.db_path, "players", "OldName")) == 1
 
     # Player renames -> a single .arkprofile write fires ingest_profile.
@@ -75,11 +101,10 @@ async def test_tribe_reparse_updates_tribe_search(
 ) -> None:
     cfg = _cfg(tmp_path)
     init_schema(cfg.db_path)
-    monkeypatch.setattr(
-        "app.ingest._load_world_and_export",
-        lambda _cfg: (_export("Bob", "OldTribe"), 1, "00:00"),
-    )
-    ingest_full(cfg)
+    with ExitStack() as stack:
+        for p in _ingest_patches("Bob", "OldTribe"):
+            stack.enter_context(p)
+        ingest_full(cfg)
     assert len(await asearch(cfg.db_path, "tribes", "OldTribe")) == 1
 
     monkeypatch.setattr(
