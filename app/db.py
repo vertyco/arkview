@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import json
 import logging
@@ -258,8 +259,10 @@ def init_schema(db_path: Path) -> None:
         # Wipe when arkparser version differs from what produced the cached
         # rows — output shape can change between versions (e.g. 0.4.1 `lvl`
         # int-not-empty-string fix) and the cache holds whatever was emitted
-        # at last parse. Auto-invalidating means a plain arkparser bump +
-        # restart suffices; no manual DB deletion.
+        # at last parse. The version is stamped at the end of this function
+        # (and re-stamped after each full ingest), so a plain arkparser bump +
+        # restart suffices; no manual DB deletion. The `is not None` guard
+        # below still tolerates pre-stamp legacy DBs.
         try:
             with connect(db_path) as conn:
                 row = conn.execute(
@@ -284,6 +287,14 @@ def init_schema(db_path: Path) -> None:
             conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
         conn.executescript(_SCHEMA_DDL)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        # Stamp the arkparser version now (not only after the first full
+        # ingest) so the next boot can detect an upgrade and auto-wipe even if
+        # this process crashes before any ingest completes.
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES('arkparser_version', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (ARKPARSER_VERSION,),
+        )
 
 
 def _row_to_params(table: str, row: dict[str, t.Any]) -> dict[str, t.Any]:
@@ -344,6 +355,67 @@ def batch_insert(db_path: Path, table: str, rows: t.Iterable[dict[str, t.Any]]) 
         except sqlite3.OperationalError as cp_exc:
             log.warning("batch_insert retry checkpoint failed: %s", cp_exc)
         return _do_insert()
+
+
+def replace_by_key(
+    db_path: Path,
+    table: str,
+    key_col: str,
+    key_val: t.Any,
+    rows: t.Iterable[dict[str, t.Any]],
+) -> int:
+    """Atomically replace rows where `key_col == key_val`, keeping FTS in sync.
+
+    Used by incremental profile/tribe reparses. Unlike `batch_insert`, this
+    maintains the `<table>_search` rowid mapping: it deletes the sidecar
+    entries for the rows being replaced (matched by their rowid) and inserts
+    fresh sidecar entries for the new rows' rowids — all in one transaction.
+    Without this, `asearch`'s `JOIN ... ON search.rowid = base.rowid` desyncs
+    after every player/tribe write and returns stale, missing, or wrong rows.
+
+    Pre: `table` in DATASET_TABLES; `key_col` is an indexed column of `table`.
+    Post: only `rows` remain for that key; FTS sidecar matches the base table.
+    """
+    assert table in DATASET_TABLES, f"unknown table {table}"
+    assert key_col in _INDEX_COLS[table], f"{key_col} not indexed on {table}"
+    cols = _INDEX_COLS[table]
+    placeholders = ", ".join(f":{c}" for c in cols) + ", :raw"
+    column_list = ", ".join(cols) + ", raw"
+    insert_sql = f"INSERT INTO {table} ({column_list}) VALUES ({placeholders})"
+    is_fts = table in FTS_TABLES
+    materialized = list(rows)
+    count = 0
+    with connect(db_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            if is_fts:
+                old = conn.execute(
+                    f"SELECT rowid FROM {table} WHERE {key_col}=?", (key_val,)
+                ).fetchall()
+                if old:
+                    old_ph = ",".join("?" for _ in old)
+                    conn.execute(
+                        f"DELETE FROM {table}_search WHERE rowid IN ({old_ph})",
+                        [r["rowid"] for r in old],
+                    )
+            conn.execute(f"DELETE FROM {table} WHERE {key_col}=?", (key_val,))
+            fts_cols = FTS_COLUMNS.get(table, ())
+            fts_ph = ", ".join("?" for _ in fts_cols)
+            fts_sql = (
+                f"INSERT INTO {table}_search(rowid, {', '.join(fts_cols)}) "
+                f"VALUES (?, {fts_ph})"
+            )
+            for row in materialized:
+                cur = conn.execute(insert_sql, _row_to_params(table, row))
+                count += 1
+                if is_fts:
+                    fields = _extract_fts_fields(table, row.get("raw", {}))
+                    conn.execute(fts_sql, (cur.lastrowid, *fields))
+            conn.execute("COMMIT")
+        except sqlite3.Error:
+            conn.execute("ROLLBACK")
+            raise
+    return count
 
 
 def swap_staging(db_path: Path, table: str, rows: t.Iterable[dict[str, t.Any]]) -> int:
@@ -521,7 +593,9 @@ async def aselect_all(db_path: Path, table: str) -> list[dict[str, t.Any]]:
     async with aconnect(db_path) as conn:
         async with conn.execute(f"SELECT raw FROM {table}") as cur:
             rows = await cur.fetchall()
-    return [json.loads(r["raw"]) for r in rows]
+    # Decode off the event loop: a full table can be 100k+ rows and a
+    # synchronous json.loads loop here would stall every other request.
+    return await asyncio.to_thread(lambda: [json.loads(r["raw"]) for r in rows])
 
 
 def _escape_fts_query(q: str) -> str:
@@ -533,11 +607,16 @@ def _escape_fts_query(q: str) -> str:
     whitespace, strip FTS5 operator chars, wrap each token in double-quotes
     (which makes it a phrase literal), append `*` for prefix matching.
     """
-    # Drop FTS5 operator chars so they can't be interpreted as syntax.
+    # Drop FTS5 operator chars so they can't be interpreted as syntax, and
+    # drop non-printable/control bytes (e.g. NUL) which otherwise survive
+    # `.split()`/`.strip()` and land inside the quoted phrase, crashing the
+    # FTS5 parser with "unterminated string" (HTTP 500).
     forbidden = '"():^-'
     tokens: list[str] = []
     for raw_tok in q.split():
-        cleaned = "".join(c for c in raw_tok if c not in forbidden).strip()
+        cleaned = "".join(
+            c for c in raw_tok if c not in forbidden and c.isprintable()
+        ).strip()
         if not cleaned:
             continue
         # Quoted phrase + prefix wildcard. e.g. `rex` → `"rex"*` which
@@ -614,4 +693,5 @@ async def aselect_where(
             f"SELECT raw FROM {table} WHERE {where}", params
         ) as cur:
             rows = await cur.fetchall()
-    return [json.loads(r["raw"]) for r in rows]
+    # Decode off the event loop (a tribe/struct filter can still match a lot).
+    return await asyncio.to_thread(lambda: [json.loads(r["raw"]) for r in rows])

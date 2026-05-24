@@ -74,6 +74,17 @@ def test_swap_staging_is_atomic(tmp_path: Path) -> None:
     assert [r["creature"] for r in rows] == ["New"]
 
 
+def test_init_schema_stamps_arkparser_version(tmp_path: Path) -> None:
+    from app.constants import ARKPARSER_VERSION
+
+    db_path = tmp_path / "av.db"
+    init_schema(db_path)
+    # Stamped at init time (not only after the first full ingest) so an
+    # arkparser upgrade still invalidates the cache even when the process
+    # crashed before any ingest completed.
+    assert meta_get(db_path, "arkparser_version") == ARKPARSER_VERSION
+
+
 def test_meta_roundtrip(tmp_path: Path) -> None:
     db_path = tmp_path / "av.db"
     init_schema(db_path)

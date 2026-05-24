@@ -1,3 +1,4 @@
+import asyncio
 import json
 import typing as t
 
@@ -20,10 +21,11 @@ def build_router(cfg: AppConfig) -> APIRouter:
                 "SELECT file_id, raw FROM cluster_inventory"
             ) as cur:
                 rows = await cur.fetchall()
-        return {
-            "cluster": {r["file_id"]: json.loads(r["raw"]) for r in rows},
-            **await get_metadata(cfg),
-        }
+        # Decode off the event loop; cluster blobs can be large.
+        cluster = await asyncio.to_thread(
+            lambda: {r["file_id"]: json.loads(r["raw"]) for r in rows}
+        )
+        return {"cluster": cluster, **await get_metadata(cfg)}
 
     @router.get("/data/cluster/{file_id}")
     async def get_cluster(file_id: str) -> dict[str, t.Any]:

@@ -71,9 +71,14 @@ def load_config(path: Path) -> AppConfig:
     env_db = os.environ.get("ARKVIEWER_DB")
     db_path = Path(env_db) if env_db else path.parent / DEFAULT_DB_FILENAME
 
+    # A present-but-empty `Port =` returns "" from configparser (the fallback
+    # only fires for an absent key), so guard the empty case before int().
+    port_raw = s.get("Port", "").strip()
+    port = int(port_raw) if port_raw else DEFAULT_PORT
+
     cfg = AppConfig(
         config_path=path,
-        port=int(s.get("Port", DEFAULT_PORT)),
+        port=port,
         map_file=_coerce_path(s.get("MapFilePath", "")),
         cluster_dir=_coerce_path(s.get("ClusterFolderPath", "")),
         banlist_file=_coerce_path(s.get("BanListFile", "")),

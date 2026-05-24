@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.config import AppConfig
 from app.constants import ARKPARSER_VERSION
-from app.db import batch_insert, connect, maintenance, meta_set, swap_staging
+from app.db import maintenance, meta_set, replace_by_key, swap_staging
 
 log = logging.getLogger("arkviewer.ingest")
 
@@ -232,9 +232,11 @@ def ingest_profile(cfg: AppConfig, path: Path) -> int:
     if record is None:
         return 0
     pid = int(record.get("playerid") or 0)
-    with connect(cfg.db_path) as conn:
-        conn.execute("DELETE FROM players WHERE playerid=?", (pid,))
-    batch_insert(cfg.db_path, "players", [_row_for("players", record)])
+    # replace_by_key keeps players_search in sync; a plain batch_insert would
+    # leave the FTS sidecar pointing at the old rowid (stale/wrong search).
+    replace_by_key(
+        cfg.db_path, "players", "playerid", pid, [_row_for("players", record)]
+    )
     return 1
 
 
@@ -258,10 +260,10 @@ def ingest_tribe(cfg: AppConfig, path: Path) -> int:
     if tribe_row is None:
         return 0
     tid = int(tribe_row.get("tribeid") or 0)
-    with connect(cfg.db_path) as conn:
-        conn.execute("DELETE FROM tribes WHERE tribeid=?", (tid,))
-        conn.execute("DELETE FROM tribelogs WHERE tribeid=?", (tid,))
-    batch_insert(cfg.db_path, "tribes", [_row_for("tribes", tribe_row)])
-    if log_row is not None:
-        batch_insert(cfg.db_path, "tribelogs", [_row_for("tribelogs", log_row)])
+    # replace_by_key keeps tribes_search in sync (tribelogs has no FTS sidecar).
+    replace_by_key(
+        cfg.db_path, "tribes", "tribeid", tid, [_row_for("tribes", tribe_row)]
+    )
+    log_rows = [_row_for("tribelogs", log_row)] if log_row is not None else []
+    replace_by_key(cfg.db_path, "tribelogs", "tribeid", tid, log_rows)
     return 1

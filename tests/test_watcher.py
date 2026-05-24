@@ -11,6 +11,7 @@ from app.watcher import (
     classify_path,
     coalesce_events,
     debounce_for_scope,
+    should_enqueue,
     wait_for_stable,
 )
 
@@ -38,6 +39,39 @@ def test_classify_tribute_tribe_is_ignored(tmp_path: Path) -> None:
 def test_classify_unknown(tmp_path: Path) -> None:
     p = tmp_path / "random.bin"
     assert classify_path(p) is None
+
+
+def test_should_enqueue_classified_save_files(tmp_path: Path) -> None:
+    assert should_enqueue(tmp_path / "TheIsland_WP.ark", None) is True
+    assert should_enqueue(tmp_path / "76561198000000000.arkprofile", None) is True
+    assert should_enqueue(tmp_path / "12345.arktribe", None) is True
+    assert should_enqueue(tmp_path / "random.bin", None) is False
+
+
+def test_should_enqueue_extensionless_cluster_file(tmp_path: Path) -> None:
+    cluster = tmp_path / "cluster"
+    cluster.mkdir()
+    # Cluster transfer files have NO extension -> classify_path can't see them,
+    # but a change must still trigger a reparse when they live under cluster_dir.
+    assert should_enqueue(cluster / "76561198000000000", cluster) is True
+    # An extensionless file outside the cluster dir is still ignored.
+    assert should_enqueue(tmp_path / "stray", cluster) is False
+    # With no cluster dir configured, extensionless files are ignored.
+    assert should_enqueue(cluster / "76561198000000000", None) is False
+
+
+def test_cooldown_evicts_entries_past_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    cd = Cooldown(window_s=30.0)
+    now = [1000.0]
+    monkeypatch.setattr("app.watcher.time.monotonic", lambda: now[0])
+    cd.acquire(Path("/tmp/a.arkprofile"))
+    cd.acquire(Path("/tmp/b.arkprofile"))
+    assert len(cd._last) == 2
+    # Long after both windows expired, a new acquire must drop the stale keys
+    # so the dict can't grow one-entry-per-path for the process lifetime.
+    now[0] += 100.0
+    cd.acquire(Path("/tmp/c.arkprofile"))
+    assert set(cd._last) == {Path("/tmp/c.arkprofile")}
 
 
 @pytest.mark.asyncio

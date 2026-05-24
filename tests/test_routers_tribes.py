@@ -109,3 +109,49 @@ def test_overlimit_lists_tribes_over_threshold(tmp_path: Path) -> None:
     over = body["overlimit"]
     assert "76561198000000001" in over
     assert len(over["76561198000000001"]) == 2
+
+
+def test_overlimit_negative_limit_returns_422(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    _seed(cfg)
+    # A negative path value is a client error (422), not an opaque 500.
+    r = _client(cfg).get("/overlimit/-1")
+    assert r.status_code == 422
+
+
+def test_tribetames_tribeless_player_returns_empty(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    init_schema(cfg.db_path)
+    meta_set(cfg.db_path, "last_parse_at", "9999999999")
+    # Tribeless player carries tribeid 0; orphan tames also default to 0.
+    batch_insert(
+        cfg.db_path,
+        "players",
+        [
+            {
+                "playerid": 5,
+                "steamid": "solo",
+                "tribeid": 0,
+                "raw": {"playerid": 5, "steamid": "solo", "tribeid": 0},
+            }
+        ],
+    )
+    batch_insert(
+        cfg.db_path,
+        "tamed",
+        [
+            {
+                "tribeid": 0,
+                "creature": "Orphan_C",
+                "lvl": 1,
+                "cryo": False,
+                "raw": {"tribeid": 0, "creature": "Orphan_C"},
+            }
+        ],
+    )
+    r = _client(cfg).get("/tribetames/solo")
+    assert r.status_code == 200
+    body = r.json()
+    # Must NOT leak every tribeid=0 orphan tame as this player's roster.
+    assert body["tamed"] == []
+    assert body["tribes"] == []

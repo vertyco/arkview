@@ -10,7 +10,9 @@ from starlette.responses import JSONResponse, Response
 from app.constants import STALE_AFTER_SECONDS
 from app.db import ameta_get
 
-_BYPASS_PATHS: t.Final[tuple[str, ...]] = ("/", "/stats", "/banlist")
+_BYPASS_PATHS: t.Final[frozenset[str]] = frozenset(
+    {"/", "/stats", "/banlist", "/updatebanlist"}
+)
 
 
 class StalenessMiddleware(BaseHTTPMiddleware):
@@ -31,8 +33,12 @@ class StalenessMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: t.Any) -> Response:
         assert request is not None
-        path = request.url.path
-        is_bypass = path in _BYPASS_PATHS
+        # Normalize a trailing slash before the bypass check: the documented
+        # AVClient consumer calls `stats/`, `banlist/`, `updatebanlist/` with
+        # trailing slashes, and an exact match would 503 those during cold
+        # start even though they must answer without parsed data.
+        normalized = request.url.path.rstrip("/") or "/"
+        is_bypass = normalized in _BYPASS_PATHS
         last = await ameta_get(self.db_path, "last_parse_at")
 
         if last is None and not is_bypass:

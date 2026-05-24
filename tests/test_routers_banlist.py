@@ -55,3 +55,20 @@ def test_updatebanlist_overwrites_file(tmp_path: Path) -> None:
         "111",
         "222",
     ]
+
+
+def test_updatebanlist_dedupes_across_embedded_newlines(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    init_schema(cfg.db_path)
+    meta_set(cfg.db_path, "last_parse_at", "9999999999")
+    app = FastAPI()
+    app.include_router(build_router(cfg))
+    client = TestClient(app)
+    # An entry with an embedded newline must split into clean tokens AND be
+    # deduped against the others — not survive as a single line nor inject a
+    # duplicate that defeats de-duplication.
+    r = client.put("/updatebanlist", json={"banlist": ["123\n456", "456", "123"]})
+    assert r.status_code == 200
+    assert cfg.banlist_file is not None
+    lines = cfg.banlist_file.read_text(encoding="utf-8").strip().split("\n")
+    assert lines == ["123", "456"]

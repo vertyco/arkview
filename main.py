@@ -142,28 +142,6 @@ class Manager:
         print_banner(cfg.map_file)
         init_schema(cfg.db_path)
 
-        if meta_get(cfg.db_path, "last_parse_at") is None and cfg.map_file is not None:
-            if cfg.map_file.exists():
-                log.info("Cold start: triggering initial parse of %s", cfg.map_file)
-                global _syncing
-                _syncing = True
-                try:
-                    ingest_full(cfg)
-                except Exception as exc:
-                    log.exception("Initial parse failed: %s", exc)
-                finally:
-                    _syncing = False
-            else:
-                # Save file not on disk yet — common on fresh ASE installs
-                # before the server has written its first save. Don't fail
-                # the cold-start path; the watcher will pick the file up
-                # the moment ARK creates it.
-                log.warning(
-                    "Map file not yet on disk: %s. Watcher will pick it up "
-                    "when ARK writes it; API serves 503 until then.",
-                    cfg.map_file,
-                )
-
         app = build_app(cfg)
         host = "0.0.0.0"
         loop = asyncio.new_event_loop()
@@ -176,7 +154,35 @@ class Manager:
         if cfg.cluster_dir is not None and cfg.cluster_dir.exists():
             watch_dirs.append(cfg.cluster_dir)
 
-        observer = start_watcher(watch_dirs, queue, loop) if watch_dirs else None
+        observer = (
+            start_watcher(watch_dirs, queue, loop, cfg.cluster_dir)
+            if watch_dirs
+            else None
+        )
+
+        # Cold start (empty DB): queue an initial full parse instead of running
+        # it inline. The old inline `ingest_full` here blocked the entire boot
+        # — the API, console title animation, watcher, and uvicorn all waited on
+        # a multi-minute parse before starting. Queuing it lets every subsystem
+        # come up at once: `_ingest_loop` (started in `_runner`) drains this on
+        # its first tick, the staleness middleware serves 503 + Retry-After
+        # until the parse lands, and the title bar animates `[Parsing]`. Routing
+        # through the queue also reuses `wait_for_stable`, so a save mid-write
+        # at boot can't cause a truncated read.
+        if meta_get(cfg.db_path, "last_parse_at") is None and cfg.map_file is not None:
+            if cfg.map_file.exists():
+                log.info("Cold start: queuing initial parse of %s", cfg.map_file)
+                queue.put_nowait(cfg.map_file)
+            else:
+                # Save file not on disk yet — common on fresh ASE installs
+                # before the server has written its first save. The watcher
+                # picks the file up the moment ARK creates it; API serves 503
+                # until then.
+                log.warning(
+                    "Map file not yet on disk: %s. Watcher will pick it up "
+                    "when ARK writes it; API serves 503 until then.",
+                    cfg.map_file,
+                )
 
         config = uvicorn.Config(
             app=app,

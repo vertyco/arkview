@@ -24,14 +24,20 @@ class BanlistUpdate(BaseModel):
 
 
 def dedupe_nonempty(items: t.Iterable[str]) -> list[str]:
-    """Strip + dedupe preserving order; drop empty strings."""
+    """Split on whitespace, dedupe preserving order; drop empty strings.
+
+    A ban id is a single whitespace-free token. Splitting on whitespace
+    flattens any entry that contains an embedded newline (or stray spaces),
+    so a single malformed input can neither inject extra lines into
+    BanList.txt nor smuggle a duplicate past de-duplication.
+    """
     seen: set[str] = set()
     out: list[str] = []
     for item in items:
-        s = item.strip()
-        if s and s not in seen:
-            seen.add(s)
-            out.append(s)
+        for tok in item.split():
+            if tok not in seen:
+                seen.add(tok)
+                out.append(tok)
     return out
 
 

@@ -1,7 +1,7 @@
 import json
 import typing as t
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 
 from app.auth import RequireBearer
 from app.config import AppConfig
@@ -27,6 +27,11 @@ def build_router(cfg: AppConfig) -> APIRouter:
             if player is None:
                 raise HTTPException(status_code=404, detail="player not found")
             tribe_id = player["tribeid"]
+            # tribeid 0 == tribeless; querying `WHERE tribeid=0` would return
+            # every orphan/default-tribe tame on the map. Return an empty
+            # roster instead of leaking unrelated tames.
+            if not tribe_id:
+                return {"tamed": [], "tribes": [], **await get_metadata(cfg)}
             async with conn.execute(
                 "SELECT raw FROM tamed WHERE tribeid=?", (tribe_id,)
             ) as cur:
@@ -42,16 +47,16 @@ def build_router(cfg: AppConfig) -> APIRouter:
         }
 
     @router.get("/overlimit/{limit}")
-    async def overlimit(limit: int) -> dict[str, t.Any]:
+    async def overlimit(limit: int = Path(ge=0)) -> dict[str, t.Any]:
         """Return tames grouped by player steamid for tribes exceeding limit.
 
         Response shape: `{overlimit: {steamid: [tame, ...]}, <meta>}`.
         Cryoed and uploaded tames are excluded so the count reflects
         on-map roster pressure only. Both filters are indexed columns now,
         so the bucket query and the fetch run entirely in SQL — no JSON
-        scan of uploaded flag.
+        scan of uploaded flag. `limit` is validated `>= 0` by FastAPI (422
+        on a negative path value rather than a 500).
         """
-        assert limit >= 0
         async with aconnect(cfg.db_path) as conn:
             async with conn.execute(
                 "SELECT tribeid, COUNT(*) AS c "

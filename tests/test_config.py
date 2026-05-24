@@ -32,6 +32,14 @@ def test_load_config_reads_existing(tmp_path: Path) -> None:
     assert cfg.port == 8123
 
 
+def test_blank_port_falls_back_to_default(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "config.ini"
+    # A present-but-empty `Port =` must not crash startup with int("").
+    cfg_path.write_text(DEFAULT_INI.replace("Port = 8000", "Port ="))
+    cfg = load_config(cfg_path)
+    assert cfg.port == 8000
+
+
 def test_db_path_defaults_next_to_config(tmp_path: Path) -> None:
     cfg_path = tmp_path / "config.ini"
     cfg = load_config(cfg_path)

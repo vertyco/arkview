@@ -8,6 +8,7 @@ from pathlib import Path
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
+from watchdog.observers.api import BaseObserver
 
 log = logging.getLogger("arkviewer.watcher")
 
@@ -59,6 +60,13 @@ class Cooldown:
     def acquire(self, path: Path) -> bool:
         assert self.window_s >= 0
         now = time.monotonic()
+        # Evict entries past their cooldown window so `_last` stays bounded by
+        # the number of paths active within `window_s` rather than growing one
+        # entry per unique path ever seen (a slow leak on a long-running
+        # watcher). A past-window entry would return True anyway.
+        stale = [p for p, ts in self._last.items() if now - ts >= self.window_s]
+        for p in stale:
+            del self._last[p]
         last = self._last.get(path)
         if last is not None and now - last < self.window_s:
             return False
@@ -117,6 +125,29 @@ def classify_path(path: Path) -> IngestScope | None:
     return None
 
 
+def should_enqueue(path: Path, cluster_dir: Path | None) -> bool:
+    """True if a changed file warrants an ingest event.
+
+    Mirrors the downstream scope decision: any classifiable save file, plus
+    extensionless files living under `cluster_dir`. Cluster transfer files
+    have no suffix, so `classify_path` can't see them — without this branch
+    the watcher silently drops every cluster upload and the CLUSTER scope is
+    dead code.
+
+    Pre: `path` is a Path. Post: bool.
+    """
+    assert isinstance(path, Path)
+    if classify_path(path) is not None:
+        return True
+    if cluster_dir is not None and not path.suffix:
+        try:
+            path.relative_to(cluster_dir)
+        except ValueError:
+            return False
+        return True
+    return False
+
+
 async def coalesce_events(
     queue: asyncio.Queue[Path],
     handler: t.Callable[[Path], t.Awaitable[None]],
@@ -145,14 +176,18 @@ class _Forwarder(FileSystemEventHandler):
     """watchdog handler that forwards changed-file paths into an asyncio.Queue."""
 
     def __init__(
-        self, queue: asyncio.Queue[Path], loop: asyncio.AbstractEventLoop
+        self,
+        queue: asyncio.Queue[Path],
+        loop: asyncio.AbstractEventLoop,
+        cluster_dir: Path | None = None,
     ) -> None:
         self.queue = queue
         self.loop = loop
+        self.cluster_dir = cluster_dir
 
     def enqueue(self, src: str) -> None:
         path = Path(src)
-        if classify_path(path) is None:
+        if not should_enqueue(path, self.cluster_dir):
             return
         self.loop.call_soon_threadsafe(self.queue.put_nowait, path)
 
@@ -169,10 +204,11 @@ def start_watcher(
     watch_dirs: list[Path],
     queue: asyncio.Queue[Path],
     loop: asyncio.AbstractEventLoop,
-) -> Observer:
+    cluster_dir: Path | None = None,
+) -> BaseObserver:
     """Start a recursive watchdog Observer on each dir."""
     assert watch_dirs, "at least one dir required"
-    handler = _Forwarder(queue, loop)
+    handler = _Forwarder(queue, loop, cluster_dir)
     observer = Observer()
     for d in watch_dirs:
         assert d.exists(), f"watch dir missing: {d}"
