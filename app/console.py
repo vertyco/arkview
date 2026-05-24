@@ -41,16 +41,20 @@ LOGO: t.Final[
 """
 
 
+# Per-level colours mirror the arkhandler look: bright green/blue/yellow/red,
+# CRITICAL = bright yellow on a red background.
 LEVEL_COLORS: t.Final[dict[str, str]] = {
-    "DEBUG": "\x1b[36m",
-    "INFO": "\x1b[32m",
-    "WARNING": "\x1b[33m",
-    "ERROR": "\x1b[31m",
-    "CRITICAL": "\x1b[1;31m",
+    "DEBUG": "\x1b[1;92m",
+    "INFO": "\x1b[1;94m",
+    "WARNING": "\x1b[1;93m",
+    "ERROR": "\x1b[1;91m",
+    "CRITICAL": "\x1b[1;93;41m",
 }
 ANSI_RESET: t.Final[str] = "\x1b[0m"
-NAME_WIDTH: t.Final[int] = 8
-LEVEL_WIDTH: t.Final[int] = 7
+TS_COLOR: t.Final[str] = "\x1b[37m"  # white timestamp
+NAME_COLOR: t.Final[str] = "\x1b[90m"  # gray logger name
+MSG_COLOR: t.Final[str] = "\x1b[1;37m"  # bright white message
+LEVEL_WIDTH: t.Final[int] = 8
 
 ARKVIEWER_LOGGERS: t.Final[tuple[str, ...]] = (
     "arkviewer",
@@ -141,13 +145,14 @@ def enable_console_vt() -> None:
 
 
 def short_logger_name(name: str) -> str:
+    """Short logger label shown in [brackets]; unpadded (the brackets delimit)."""
     if name == "arkviewer":
-        name = "app"
-    elif name.startswith("arkviewer."):
-        name = name[len("arkviewer.") :]
-    elif name.startswith("uvicorn"):
-        name = "uvicorn"
-    return name.ljust(NAME_WIDTH)[:NAME_WIDTH]
+        return "app"
+    if name.startswith("arkviewer."):
+        return name[len("arkviewer.") :]
+    if name.startswith("uvicorn"):
+        return "uvicorn"
+    return name
 
 
 class CompactFormatter(logging.Formatter):
@@ -166,18 +171,22 @@ class CompactFormatter(logging.Formatter):
         ts = self.formatTime(record, self.datefmt)
         name = short_logger_name(record.name)
         level_text = record.levelname
-        if self.use_color and (color := LEVEL_COLORS.get(level_text)):
-            padding = " " * max(0, LEVEL_WIDTH - len(level_text))
-            level_display = f"{color}{level_text}{ANSI_RESET}{padding}"
-        else:
-            level_display = level_text.ljust(LEVEL_WIDTH)
         msg = record.getMessage()
         if record.exc_info:
             exc_text = record.exc_text or self.formatException(record.exc_info)
             msg = f"{msg}\n{exc_text}"
         if record.stack_info:
             msg = f"{msg}\n{self.formatStack(record.stack_info)}"
-        return f"{ts} {level_display} {name} | {msg}"
+        # arkhandler-style line: `[ts] LEVEL [name]: message`. Colour wraps the
+        # level word only; the pad after it (plain spaces) aligns the names.
+        if self.use_color:
+            color = LEVEL_COLORS.get(level_text, "")
+            pad = " " * max(0, LEVEL_WIDTH - len(level_text))
+            return (
+                f"{TS_COLOR}[{ts}]{ANSI_RESET} {color}{level_text}{ANSI_RESET}{pad} "
+                f"{NAME_COLOR}[{name}]{ANSI_RESET}: {MSG_COLOR}{msg}{ANSI_RESET}"
+            )
+        return f"[{ts}] {level_text.ljust(LEVEL_WIDTH)} [{name}]: {msg}"
 
 
 def resolve_log_dir() -> Path:
@@ -188,7 +197,7 @@ def resolve_log_dir() -> Path:
 
 
 def build_file_handler(log_path: Path) -> logging.Handler | None:
-    formatter = CompactFormatter(use_color=False, datefmt="%Y-%m-%d %H:%M:%S")
+    formatter = CompactFormatter(use_color=False, datefmt="%Y-%m-%d %I:%M:%S %p")
     try:
         handler = RotatingFileHandler(
             log_path,
@@ -211,7 +220,7 @@ def init_logging() -> None:
     enable_console_vt()
 
     is_tty = sys.stdout.isatty() if hasattr(sys.stdout, "isatty") else False
-    stream_formatter = CompactFormatter(use_color=is_tty, datefmt="%H:%M:%S")
+    stream_formatter = CompactFormatter(use_color=is_tty, datefmt="%I:%M:%S %p")
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(stream_formatter)
 
