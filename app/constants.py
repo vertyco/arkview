@@ -1,7 +1,7 @@
 import typing as t
 from importlib import metadata as importlib_metadata
 
-VERSION: t.Final[str] = "3.2.1"
+VERSION: t.Final[str] = "3.2.3"
 DEFAULT_PORT: t.Final[int] = 8000
 DEFAULT_DB_FILENAME: t.Final[str] = "arkviewer.db"
 STALE_AFTER_SECONDS: t.Final[int] = 6 * 60 * 60  # 6 hours
