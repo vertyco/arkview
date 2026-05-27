@@ -1,17 +1,52 @@
 import asyncio
 import logging
+import multiprocessing
 import os
-import subprocess
 from hashlib import md5
 from time import perf_counter
 
 import orjson
+import psutil
 
-from common import utils
 from common.constants import IS_WINDOWS
 from common.models import cache  # noqa
+from common.parse_worker import run_export
 
 log = logging.getLogger("arkview.exporter")
+
+# Hard ceiling on a single parse (matches the old 15-minute wait budget).
+EXPORT_TIMEOUT: int = 900
+
+
+def apply_child_limits(pid: int, threads: int, priority: str) -> None:
+    """Best-effort cap on the parse child so it can't starve the game server.
+
+    Mirrors the old ``start /<priority> /AFFINITY`` (Windows) and ``taskset``
+    (Linux) behaviour using psutil. Silently skips on any error -- the child
+    may exit before we attach, and throttling is an optimisation, not a
+    correctness requirement.
+    """
+    try:
+        proc = psutil.Process(pid)
+        cores = list(range(max(1, min(threads, os.cpu_count() or 1))))
+        try:
+            proc.cpu_affinity(cores)
+        except (psutil.AccessDenied, NotImplementedError, AttributeError):
+            pass
+        if IS_WINDOWS:
+            classes = {
+                "LOW": psutil.IDLE_PRIORITY_CLASS,
+                "BELOWNORMAL": psutil.BELOW_NORMAL_PRIORITY_CLASS,
+                "NORMAL": psutil.NORMAL_PRIORITY_CLASS,
+                "ABOVENORMAL": psutil.ABOVE_NORMAL_PRIORITY_CLASS,
+                "HIGH": psutil.HIGH_PRIORITY_CLASS,
+            }
+            proc.nice(classes.get(priority, psutil.BELOW_NORMAL_PRIORITY_CLASS))
+        else:
+            proc.nice(10)
+    except psutil.Error as e:
+        log.debug("Could not apply child limits to pid %s: %s", pid, e)
+
 
 # {file_name: last_modified}
 last_file_states: dict[str, int] | None = None
@@ -115,9 +150,6 @@ async def _process_export():
         log.warning("No map file found")
         await wipe_output()
         return
-    if not cache.exe_file.exists():
-        log.warning("No export executable found")
-        return
     cluster_dir = cache.cluster_dir
     if cluster_dir and not cluster_dir.exists():
         log.warning("Cluster is set but the specified path does not exist")
@@ -144,95 +176,44 @@ async def _process_export():
 
     cache.map_last_modified = map_file_modified
 
-    # Threads should be equal to half of the total CPU threads
+    # Threads + priority throttle the parse child so it can't starve the game server.
     available_cores = os.cpu_count() or 2
     threads = max(min(available_cores, cache.threads), 2)
     priority = cache.priority  # LOW, BELOWNORMAL, NORMAL, ABOVENORMAL, HIGH
 
-    # ASVExport.exe all "path/to/map/file" "path/to/cluster" "path/to/output/folder"
-    # start ASVExport.exe all "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\map_ase\Ragnarok.ark" "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\solecluster_ase\" "C:\Users\Vert\Desktop\output\"
-    # start ASVExport.exe all "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\map_asa\TheIsland_WP.ark" "C:\Users\Vert\Documents\Projects-Local\arkviewer\testdata\solecluster_asa\" "C:\Users\Vert\Desktop\output\"
-    if IS_WINDOWS:
-        mask = utils.get_affinity_mask(threads)
-        command = [
-            "start",
-            f"/{priority}",
-            "/MIN",
-            "/AFFINITY",
-            mask,
-            str(cache.exe_file),
-            "all",
-            f'"{map_file}"',
-        ]
-        if cdir := cluster_dir:
-            command.append(f'"{cdir}\\"')
-        command.append(f'"{cache.output_dir}\\"')
-    else:
-        cpu_range = f"0-{threads - 1}" if threads > 1 else "0"
-        command = [
-            "taskset",
-            "-c",
-            cpu_range,
-            "dotnet",
-            str(cache.exe_file),
-            "all",
-            str(map_file),
-        ]
-        if cdir := cluster_dir:
-            command.append(str(cdir) + "/")
-        command.append(str(cache.output_dir) + "/")
-
-    if cache.debug:
-        log.info(f"Running: {command}")
-    else:
-        log.debug(f"Running: {command}")
-
+    # Parse out-of-process: a spawn child writes ASV_*.json then exits, so the
+    # multi-GB arkparser object graph is reclaimed by the OS and the long-lived
+    # server process stays lean.
+    cluster_arg = str(cluster_dir) if cluster_dir else None
+    ctx = multiprocessing.get_context("spawn")
+    proc = ctx.Process(
+        target=run_export,
+        args=(str(map_file), str(cache.output_dir), cluster_arg),
+        name="arkview-parser",
+        daemon=False,
+    )
+    start = perf_counter()
+    proc.start()
+    cache.parse_pid = proc.pid
+    apply_child_limits(proc.pid, threads, priority)
+    log.info("Parse worker started with PID %s", proc.pid)
     try:
-        if IS_WINDOWS:
-            retcode = os.system(" ".join(command))
-            if retcode != 0:
-                log.error(f"Export command returned non-zero exit code: {retcode}")
-        else:
-            # Ensure all the paths have r/w and execute permissions
-            try:
-                cache.exe_file.chmod(0o777)
-                cache.map_file.chmod(0o777)
-                cache.output_dir.chmod(0o777)
-            except PermissionError as e:
-                log.warning(f"Could not set permissions on files/directories: {e}")
-
-            result = subprocess.run(
-                command,
-                stderr=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                cwd=str(cache.root_dir),
-                timeout=300,  # Add timeout to prevent hanging indefinitely
+        await asyncio.to_thread(proc.join, EXPORT_TIMEOUT)
+        if proc.is_alive():
+            proc.terminate()
+            await asyncio.to_thread(proc.join, 5)
+            log.warning(
+                "Parse timed out after %ss; worker terminated",
+                int(perf_counter() - start),
             )
-            if stdout := result.stdout.decode("utf-8", errors="ignore"):
-                log.info(stdout)
-            if stderr := result.stderr.decode("utf-8", errors="ignore"):
-                log.info(stderr)
-        pid = await utils.wait_for_process_to_exist("ASVExport")
-        if not pid:
-            log.error("Failed to start export process")
-            return
-        start = perf_counter()
-        log.info(f"Export process started with PID {pid}")
-        # Now wait for it to stop
-        completed = await utils.wait_for_pid_to_stop(pid)
-        seconds = int(perf_counter() - start)
-        if completed:
-            log.info("Export completed in %s seconds", seconds)
+        elif proc.exitcode != 0:
+            log.error("Parse worker exited with code %s", proc.exitcode)
         else:
-            log.warning(f"Export process timed out after {seconds} seconds")
-    except subprocess.TimeoutExpired:
-        log.error("Export process timed out")
-    except subprocess.CalledProcessError as e:
-        log.error("Export failed", exc_info=e)
-        log.error(f"Standard Output: {e.stdout}")
-        log.error(f"Standard Error: {e.stderr}")
+            log.info("Export completed in %s seconds", int(perf_counter() - start))
     except Exception as e:
-        log.error("Export failed", exc_info=e)
+        log.error("Parse worker failed", exc_info=e)
+    finally:
+        cache.parse_pid = None
 
     try:
         await load_outputs()

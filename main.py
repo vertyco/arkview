@@ -1,28 +1,35 @@
 import asyncio
 import logging
+import multiprocessing
 import os
 import sys
 
-from common.constants import IS_WINDOWS
-from common.logger import init_logging
-from common.scheduler import scheduler
-from common.tasks import ArkViewer
-from common.version import VERSION
-
-init_logging()
-
-
 log = logging.getLogger("arkview.main")
+
+# NOTE: keep this module's top level minimal and side-effect free. The parser
+# runs in a `multiprocessing` spawn child, and spawn re-imports this module
+# (as __mp_main__) in every child. Heavy imports (tasks/scheduler/logger) are
+# therefore deferred into the methods below, and init_logging() is called only
+# from the __main__ guard -- so a parse child never drags in FastAPI/uvicorn or
+# rotates the server's log file.
 
 
 class Manager:
-    """Compile with 'pyinstaller.exe --clean app.spec'"""
+    """Owns the runtime: config, scheduler, watcher loop, and the API server.
+
+    Build the Windows exe with PyInstaller (see README).
+    """
 
     def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        from common.tasks import ArkViewer
+
         self.loop: asyncio.AbstractEventLoop = loop
         self.handler = ArkViewer()
 
     async def start(self) -> None:
+        from common.scheduler import scheduler
+        from common.version import VERSION
+
         log.info(f"Version: {VERSION}")
         scheduler.start()
         scheduler.remove_all_jobs()
@@ -32,6 +39,8 @@ class Manager:
             self.loop.stop()
 
     async def shutdown(self) -> None:
+        from common.scheduler import scheduler
+
         scheduler.remove_all_jobs()
         scheduler.shutdown(wait=False)
 
@@ -56,6 +65,8 @@ class Manager:
 
     @classmethod
     def run(cls) -> None:
+        from common.constants import IS_WINDOWS
+
         log.info(f"Starting ArkViewer with PID {os.getpid()}")
 
         loop = asyncio.ProactorEventLoop() if IS_WINDOWS else asyncio.new_event_loop()
@@ -83,4 +94,17 @@ class Manager:
 
 
 if __name__ == "__main__":
+    # freeze_support() MUST run first: in a frozen exe the same binary is
+    # re-launched as the parse child, and this is what hands control to the
+    # multiprocessing bootstrap instead of starting a second server.
+    multiprocessing.freeze_support()
+    multiprocessing.set_start_method("spawn", force=True)
+
+    from common.console import disable_quickedit, enable_console_vt, print_banner
+    from common.logger import init_logging
+
+    disable_quickedit()  # stop console click-to-select from freezing the loop
+    enable_console_vt()
+    init_logging()
+    print_banner()
     Manager.run()

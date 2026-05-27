@@ -50,18 +50,15 @@ else:
 
 META_PATH = Path(os.path.abspath(os.path.dirname(__file__))).parent
 
-OUTPUT_DIR = ROOT_DIR / "output"
-OUTPUT_DIR.mkdir(exist_ok=True)
-FILE_NAME = "ASVExport.exe" if IS_WINDOWS else "ASVExport.dll"
-EXE_FILE = (
-    Path(os.path.abspath(os.path.dirname(__file__))).parent / "exporter" / FILE_NAME
-)
-EXPORTER_LOGS = EXE_FILE.parent / "asvlog.log"
-if not EXPORTER_LOGS.exists():
-    EXPORTER_LOGS.touch(mode=0o777)
+# Output + config locations. Both honor env overrides so a single install can
+# run many instances (one per map) under systemd via ARKVIEWER_CONFIG /
+# ARKVIEWER_OUTPUT; Docker just binds config.ini at the default ROOT_DIR path.
+OUTPUT_DIR = Path(os.environ.get("ARKVIEWER_OUTPUT") or (ROOT_DIR / "output"))
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-CONFIG = ROOT_DIR / "config.ini"
+CONFIG = Path(os.environ.get("ARKVIEWER_CONFIG") or (ROOT_DIR / "config.ini"))
 if not CONFIG.exists():
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
     CONFIG.write_text(DEFAULT_CONF.strip())
 
 

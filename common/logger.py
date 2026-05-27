@@ -5,7 +5,6 @@ from logging.handlers import RotatingFileHandler
 import colorama
 import sentry_sdk
 from colorama import Back, Fore, Style
-from sentry_sdk.integrations.aiohttp import AioHttpIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
 green = Fore.LIGHTGREEN_EX + Style.BRIGHT
@@ -26,6 +25,8 @@ formats = {
 }
 dt_fmt = "%Y-%m-%d %I:%M:%S %p"
 colorama.init(autoreset=True)
+
+log = logging.getLogger("arkview.logger")
 
 
 class PrettyFormatter(logging.Formatter):
@@ -79,7 +80,6 @@ def init_sentry(dsn: str, version: str) -> None:
         sentry_sdk.init(
             dsn=dsn,
             integrations=[
-                AioHttpIntegration(),
                 LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
             ],
             release=version,

@@ -1,196 +1,148 @@
 # ArkView
 
-ArkView is a client side plugin for the Arkon bot that allows you to view your map data in real time. It's a simple client that runs on your server and listens for requests from Arkon. It then sends the data back to Arkon for you to view.
+ArkView is a client-side plugin for the Arkon bot that lets you view your map
+data in real time. It runs on your server, parses the save, and serves the data
+over HTTP for Arkon to consume.
 
-ArkView only processes one server per instance, so if you are running multiple maps on a single server you will need multiple instances of ArkView running.
+ArkView processes **one map per instance** — run multiple maps via multiple
+instances (one container / one systemd unit / one exe per map).
 
 ![Platform](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
 ![Platform](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
-
-![Python 3.8](https://img.shields.io/badge/python-v3.11-orange?style=for-the-badge)
+![Python](https://img.shields.io/badge/python-3.10+-orange?style=for-the-badge)
 ![license](https://img.shields.io/github/license/Vertyco/arkview?style=for-the-badge)
 
-![black](https://img.shields.io/badge/style-black-000000?style=for-the-badge&?link=https://github.com/psf/black)
-![GitHub repo size](https://img.shields.io/github/repo-size/Vertyco/arkview?color=blueviolet&style=for-the-badge)
+## How it works
 
-# Configuration
+Parsing is handled by the pure-Python [`arkparser`](https://pypi.org/project/arkparser/)
+library — **no .NET, no external exe**. It reads both engine generations:
 
-The client uses a `config.ini` file to store the configuration. The file is created when you run the client for the first time. You can also create it manually by copying the `default_config.ini` file from the repo and renaming it to `config.ini`.
+- **ASE** (Survival Evolved) — `.ark` flat-binary saves
+- **ASA** (Survival Ascended) — `*_WP.ark` SQLite saves
+
+Each parse runs in a short-lived **child process** that writes `ASV_*.json` and
+exits, so the multi-GB parse footprint is reclaimed by the OS and the
+long-lived server stays lean. There is **no database**: results are written to
+an output directory and held in memory until the next parse. ArkView watches
+the map file's modification time and re-parses (every ~5s) when the server saves.
+
+> **Migrating from the old (.NET) build?** The HTTP API and response shape are
+> unchanged, so the Arkon/AVClient side needs no changes. You no longer need the
+> .NET runtime or the bundled `ASVExport.exe`.
+
+## Configuration
+
+ArkView reads a `config.ini` (created on first run; or copy `default_config.ini`).
 
 ```ini
 [Settings]
-# Port for the API to listen on (TCP)
-# Make sure to forward this port in your router and allow it as TCP in your firewall
+# Port for the API to listen on (TCP). Forward it in your router/firewall.
 Port = 8000
 
-# Direct path to the .ark map file
+# Direct path to the .ark map file.
+# ASE: .../Saved/SavedArks/TheIsland.ark
+# ASA: .../Saved/SavedArks/TheIsland_WP/TheIsland_WP.ark
+# Player (.arkprofile) and tribe (.arktribe) files are read from the same directory.
 MapFilePath = path/to/your/map.ark
 
-# (Optional): Direct path to the solecluster folder
-ClusterFolderPath = path/to/your/solecluster
+# (Optional) Direct path to the cluster/solecluster folder
+ClusterFolderPath = path/to/your/cluster
 
-# (Optional): Direct path to BanList.txt file
+# (Optional) Direct path to BanList.txt
 BanListFile = path/to/your/BanList.txt
 
-# Process priority(Windows-only): LOW, BELOWNORMAL, NORMAL, ABOVENORMAL, HIGH
+# Parser child priority (Windows): LOW, BELOWNORMAL, NORMAL, ABOVENORMAL, HIGH
 Priority = LOW
 
-# Number of threads to use for processing (if the server's cpu has less cores than this setting, it will default to the server's cpu count)
+# CPU cores the parser child may use (capped to the host core count)
 Threads = 2
 
-# If true, api will only be accessible locally (If running as python, this will cause the client to fail)
+# Re-parse when cluster files change (not just the map file)
+ReprocessOnArkDataUpdate = False
+
+# If true, the API binds to 127.0.0.1 only
 Debug = False
 
-# (Optional): Set a sentry DSN for error tracking
+# (Optional) Sentry DSN for error tracking
 DSN =
 
-# (Optional): API Key for authentication
+# (Optional) API key for Bearer-token auth
 APIKey =
 ```
 
-# Running on Windows
+Two env vars let one install serve many maps (see systemd below):
 
-You will need windows with the latest .NET v6.0 framework to run this client
+- `ARKVIEWER_CONFIG` — path to this instance's `config.ini`
+- `ARKVIEWER_OUTPUT` — directory this instance writes `ASV_*.json` to
 
-1. [Get .NET Framework Here](https://dotnet.microsoft.com/en-us/download)
-2. Download the latest client from [Releases](https://github.com/vertyco/arkview/releases)
-3. Run the .exe anywhere you want, it will make a `config.ini` file that you can set your map and cluster path in
-4. Set the port you want the client to listen on and forward it in your router
+## Running on Windows (.exe)
 
-# Running on Linux (ASE ONLY) [UNSUPPORTED!]
+1. Download the latest `ArkViewer.exe` from [Releases](https://github.com/vertyco/arkview/releases).
+2. Run it anywhere — it creates a `config.ini` next to the exe on first launch.
+3. Set `MapFilePath` (and optionally `ClusterFolderPath`), pick a `Port`, and
+   forward that port. No .NET required.
 
-This assumes you have a basic understanding of Linux and how to use the terminal.
-Support for running on Linux is experimental and may not work as expected. As such I cannot provide support for this method.
-
-Run the following commands to install the required dependencies
+## Running from source (Python 3.10+)
 
 ```bash
-# Update existing packages
-sudo apt update && sudo apt upgrade -y
-
-# Install the .NET 6.0 SDK and runtime
-sudo apt -y install dotnet-sdk-6.0
-sudo apt -y install aspnetcore-runtime-6.0
-
-# Install python and essential dependencies
-sudo apt -y install python3.11 python3.11-dev python3.11-venv git build-essential nano
-
-# Create a virtual environment
-python3.11 -m venv ~/arkenv
-
-# Activate the virtual environment
-source ~/arkenv/bin/activate
-
-# Clone the repository and cd into it
 git clone https://github.com/vertyco/arkview.git
 cd arkview
-
-# Install the required python packages
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-# Edit the config.ini file to your liking
-cp default_config.ini config.ini
-sudo nano config.ini  # Save and exit with ctrl + O; enter; ctrl + X
-
-# Run the client
-python3.11 main.py
+cp default_config.ini config.ini   # then edit MapFilePath etc.
+python main.py
 ```
 
-## Setting up Auto-Start on Boot for linux
+## Running with Docker
 
-First, your Linux `username` can be fetched with the following command:
+One container per map; no database or state volume (output is ephemeral and
+re-parsed on restart).
 
 ```bash
-whoami
+cp docker-compose.example.yml docker-compose.yml   # edit binds/ports/configs
+docker build -t arkviewer:latest .
+docker compose up -d
 ```
 
-Next, your python path can be fetched with the following commands:
+Each service binds a per-map `config.ini` at `/app/config.ini` and mounts the
+save tree read-only. See `docker-compose.example.yml` for the full layout. If
+your save-mount owner isn't UID 1000, build with `--build-arg UID=<uid> GID=<gid>`.
+
+## Running on Ubuntu (systemd)
+
+A templated unit at `deploy/arkview@.service` runs one shared install as many
+instances. Assuming code + venv at `/opt/arkviewer` and per-map files under
+`/opt/arkviewer/maps/<name>/`:
 
 ```bash
-source ~/arkenv/bin/activate
-/usr/bin/which python
+sudo cp deploy/arkview@.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now arkview@theisland.service
+journalctl -u arkview@theisland -f
 ```
 
-Then create the new service file:
+The unit sets `ARKVIEWER_CONFIG`/`ARKVIEWER_OUTPUT` per instance and caps memory
+at 4 GB (the parser child peaks ~2 GB on a large map — raise `MemoryMax` for
+very large/modded maps).
 
-`sudo nano /etc/systemd/system/arkview.service`
+## Adding to Arkon
 
-Paste the following in the file, and replace all instances of `username` with the Linux username you retrieved above, and `path` with the python path you retrieved above.
+Once ArkView is running:
 
-```ini
-[Unit]
-Description=arkview
-After=multi-user.target
-After=network-online.target
-Wants=network-online.target
+- Type `+viewservers` to open the server menu (cluster + servers already added).
+- Select your cluster and click **Servers**.
+- Click **ArkView** and enter the port you're running on, then **Submit**
+  (IP is usually auto-detected from your server's IP).
 
-[Service]
-ExecStart=path -O -m main.py --no-prompt
-User=username
-Group=username
-Type=idle
-Restart=on-abnormal
-RestartSec=15
-RestartForceExitStatus=1
-RestartForceExitStatus=26
-TimeoutStopSec=10
+## Credits
 
-[Install]
-WantedBy=multi-user.target
-```
+Parsing is powered by [`arkparser`](https://pypi.org/project/arkparser/). The
+exported data schema descends from the ASV lineage
+([miragedmuk's ASV](https://github.com/miragedmuk/ASV)) — lots of love for the
+groundwork there.
 
-Save and exit `ctrl + O; enter; ctrl + x`
+## Contributing
 
-### Starting and enabling the service
-
-```bash
-# Starting the service
-sudo systemctl start arkview
-
-# Enabling the service
-sudo systemctl enable arkview
-
-# Stopping the service
-sudo systemctl stop arkview
-```
-
-# Adding to Arkon
-
-After you have the client running, you can add it to Arkon by doing the following:
-
-- Type `+viewservers` to open the server menu, this assumes you've already added your cluster and servers to Arkon.
-- Select the cluster you want and click the `Servers` button.
-- Click the `ArkView` button and a modal will pop up.
-- Enter the port of the client you're running, and click `Submit` (IP is usually not needed as it uses your server's IP)
-
-## EXTRA: Samba (For running on windows but syncing with linux)
-
-```bash
-sudo apt update
-sudo apt install samba
-```
-
-`sudo nano /etc/samba/smb.conf`
-
-```conf
-# Scroll to the bottom of the file and add a new share definition. For example:
-[ShareName]
-path = /path/to/your/directory
-browseable = yes
-writable = yes
-guest ok = yes
-create mask = 0777
-directory mask = 0777
-```
-
-# Credits
-
-This plugin wouldn't be possible without miragedmuk's work on his fork of the old Ark savegame parser, lots of love!
-https://github.com/miragedmuk/ASV
-
-# Contributing
-
-If you have any suggestions, or found any bugs, please ping me in Discord (Vertyco#0117)
-or [open an issue](https://github.com/vertyco/arkview/issues) on my repo!
-
-If you would like to contribute, please talk to me on Discord first about your ideas before opening a PR.
+Found a bug or have a suggestion? [Open an issue](https://github.com/vertyco/arkview/issues).
+For larger contributions, please reach out on Discord before opening a PR.

@@ -1,0 +1,76 @@
+# ArkViewer - reference compose file.
+#
+# Copy this to docker-compose.yml (gitignored) and edit for your host:
+#   cp docker-compose.example.yml docker-compose.yml
+#
+# One container per map. Each service needs:
+#   - a unique host port mapped to container 8000
+#   - a per-map config.ini bound at /app/config.ini (read-only)
+#   - your ARK save tree mounted read-only
+#   - (optional) a shared cluster directory mounted read-only
+#
+# There is NO database and NO state volume: each parse rewrites ASV_*.json
+# inside the container (ephemeral) and the result is cached in memory. On
+# restart the container re-parses before serving (a few minutes on a large
+# map); endpoints return 404 until the first parse lands.
+#
+# Inside each config.ini set MapFilePath to the path AS SEEN INSIDE THE
+# CONTAINER. ASA: bind `Saved/SavedArks/<MapName>_WP/` to /saves and set
+# MapFilePath=/saves/<MapName>_WP.ark. ASE: bind `Saved/SavedArks/` to /saves
+# and set MapFilePath=/saves/<MapName>.ark. Keep Port=8000 inside the config;
+# the host port comes from the `ports:` mapping below.
+
+x-arkviewer-common: &arkviewer-common
+  image: arkviewer:latest
+  build: .
+  restart: unless-stopped
+  # The parser runs in a child process that peaks ~2 GB on a large map; give
+  # the cgroup headroom so it isn't OOM-killed mid-parse.
+  mem_limit: 4g
+  mem_reservation: 1g
+  healthcheck:
+    test:
+      [
+        "CMD-SHELL",
+        "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/ | grep -qE '^(200|401)$$'",
+      ]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 30s
+
+services:
+  # ---------------------------------------------------------------------
+  # Example: TheIsland on host port 8101
+  # ---------------------------------------------------------------------
+  arkviewer-theisland:
+    <<: *arkviewer-common
+    container_name: arkviewer-theisland
+    ports:
+      - "8101:8000"
+    volumes:
+      - ./configs/theisland.ini:/app/config.ini:ro
+      # Replace with your actual per-map save directory (the *_WP dir for ASA):
+      - /path/to/ark/theisland/Saved/SavedArks/TheIsland_WP:/saves:ro
+      # Optional shared cluster dir; remove both this line and ClusterFolderPath
+      # from the ini if you don't run a cluster:
+      - /path/to/ark/cluster:/cluster:ro
+
+  # ---------------------------------------------------------------------
+  # Example: Ragnarok on host port 8102
+  # ---------------------------------------------------------------------
+  arkviewer-ragnarok:
+    <<: *arkviewer-common
+    container_name: arkviewer-ragnarok
+    ports:
+      - "8102:8000"
+    volumes:
+      - ./configs/ragnarok.ini:/app/config.ini:ro
+      - /path/to/ark/ragnarok/Saved/SavedArks/Ragnarok_WP:/saves:ro
+      - /path/to/ark/cluster:/cluster:ro
+
+  # ---------------------------------------------------------------------
+  # To add another map: copy a service block, then change container_name,
+  # the host port in `ports:`, the configs/<map>.ini path, and the save bind
+  # (point at the `<Map>_WP/` dir for ASA). Create configs/<map>.ini first.
+  # ---------------------------------------------------------------------

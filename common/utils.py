@@ -1,21 +1,12 @@
-import asyncio
-import logging
 import os
 import re
-import subprocess
-import typing as t
-import webbrowser
 from datetime import datetime
 from pathlib import Path
-from time import perf_counter
 
 import cpuinfo
 import psutil
 
-log = logging.getLogger("arkview.common.utils")
 
-
-# Add new path validation function
 def validate_path(path: Path) -> bool:
     """
     Validate that a path contains only alphanumeric characters, underscores,
@@ -39,157 +30,6 @@ def validate_path(path: Path) -> bool:
     pattern = r"^[a-zA-Z0-9_\.:/\\]+"
 
     return bool(re.match(pattern, path_str))
-
-
-async def follow_logs(path: Path, sleep: float = 0.1) -> t.AsyncGenerator[str, None]:
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {path}")
-    try:
-        with open(path, "r", encoding="utf-8") as file:
-            file.seek(0, os.SEEK_END)  # Move to the end of the file
-            while True:
-                try:
-                    line: str = await asyncio.to_thread(file.readline)
-                    if line and line.strip():
-                        # Check if the line is empty or contains only whitespace
-                        yield line.strip()
-                except Exception as e:
-                    log.error("Error reading log file", exc_info=e)
-                    await asyncio.sleep(1)
-                await asyncio.sleep(sleep)
-    except asyncio.CancelledError:
-        pass
-    return
-
-
-async def get_process_pid(process: str) -> int | None:
-    """
-    Get the PID of a process by name
-
-    Returns:
-        int | None: The PID of the process or None if the process does not exist
-    """
-
-    def _exe():
-        for proc in psutil.process_iter():
-            try:
-                if process in proc.name():
-                    return proc.pid
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-        return None
-
-    return await asyncio.to_thread(_exe)
-
-
-async def wait_for_process_to_exist(process: str, wait_time: int = 6) -> int | None:
-    """
-    Wait for a process to exist by name
-
-    Returns:
-        int | None: The PID of the process or None if the process does not exist
-    """
-    start = perf_counter()
-    while True:
-        pid = await get_process_pid(process)
-        if pid:
-            return pid
-        if perf_counter() - start >= wait_time:
-            return None
-        await asyncio.sleep(0.01)
-
-
-async def wait_for_pid_to_stop(pid: int, wait_time: int = 900) -> bool:
-    """
-    Wait for a process to stop by PID
-
-    Returns:
-        bool: True if the process has stopped
-    """
-    start = perf_counter()
-    while True:
-        if not psutil.pid_exists(pid):
-            return True
-        if perf_counter() - start >= wait_time:
-            return False
-        await asyncio.sleep(0.1)
-
-
-def dotnet_installed() -> bool:
-    cmd = r"dotnet --list-sdks"
-    is_installed = True
-    try:
-        res = (
-            subprocess.run(
-                ["powershell", cmd],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=10,
-            )
-            .stdout.decode("utf-8")
-            .strip()
-        )
-        log.debug(res)
-        if "not recognized as the name of a cmdlet" in res:
-            is_installed = False
-        else:
-            # Look for any SDK version line
-            sdk_lines = [line for line in res.splitlines() if line.strip()]
-            if not sdk_lines:
-                is_installed = False
-                log.error("No .NET SDK versions found")
-            else:
-                version = sdk_lines[0].split(" ")[0].strip()
-                # Use version parsing for accurate comparison
-                from packaging.version import parse as parse_version
-
-                try:
-                    if parse_version(version) < parse_version("6.0.0") or parse_version(
-                        version
-                    ) > parse_version("6.9.9"):
-                        is_installed = False
-                        log.error(
-                            f".NET version {version} is not compatible (requires 6.0.0 - 6.9.9)"
-                        )
-                    else:
-                        log.info(f"Current .NET version: {version}")
-                except Exception as e:
-                    log.error("Failed to parse .NET version", exc_info=e)
-                    is_installed = False
-    except subprocess.TimeoutExpired:
-        log.error("Timeout checking .NET version")
-        is_installed = False
-    except Exception as e:
-        log.error("Failed to check .NET installation", exc_info=e)
-        is_installed = False
-
-    windows = True if "C:\\Users" in os.environ.get("USERPROFILE", "") else False
-    if not is_installed:
-        log.critical(".NET V6.0 framework is REQUIRED!")
-        if windows:
-            webbrowser.open("https://dotnet.microsoft.com/en-us/download/dotnet/6.0")
-    return is_installed
-
-
-def get_affinity_mask(threads: int) -> str:
-    # https://poweradm.com/set-cpu-affinity-powershell/
-    cpus = os.cpu_count() or 1
-    if threads > cpus:
-        threads = cpus
-
-    options = []
-    num = 1
-    for _ in range(cpus):
-        if not options:
-            options.append(num)
-        else:
-            num = num * 2
-            options.append(num)
-
-    # Reverse and use last core first
-    options = options[-threads:]
-    mask = sum(options) if options else 1
-    return hex(mask)
 
 
 def format_sys_info() -> dict:

@@ -1,0 +1,36 @@
+# Files that shouldn't end up in the Docker image.
+.git
+.gitignore
+.venv
+.idea
+.vscode
+.claude
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+build/
+dist/
+*.spec.bak
+
+# Test + reference content (image-bloating, not needed at runtime).
+testdata/
+test-configs/
+
+# Local-only artifacts.
+config.ini
+output/
+*.log
+logs.log
+
+# Build / release tooling the runtime container doesn't need.
+build.py
+app.spec
+giga.ico
+extra-hooks/
+docker-compose.yml
+docker-compose.example.yml
+deploy/
+
+# Docs (kept in git, not in image).
+*.md

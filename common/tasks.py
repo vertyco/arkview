@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import multiprocessing
 import os
 import sys
 from collections import defaultdict
@@ -18,7 +17,6 @@ from uvicorn import Config, Server
 
 from common.constants import (
     DEFAULT_CONF,
-    EXPORTER_LOGS,
     IGNORED_DINO_PATHS,
     IS_EXE,
     IS_WINDOWS,
@@ -29,7 +27,7 @@ from common.logger import init_sentry
 from common.models import Banlist, Dtypes, ServerNames, cache  # noqa
 from common.scheduler import scheduler
 from common.statusbar import status_bar
-from common.utils import dotnet_installed, follow_logs, format_sys_info, validate_path
+from common.utils import format_sys_info, validate_path
 from common.version import VERSION
 
 api = FastAPI()
@@ -238,7 +236,6 @@ class ArkViewer:
 
         txt = (
             f"\nRunning as EXE: {cache.root_dir}\n"
-            f"Exporter: {cache.exe_file}\n"
             f"Map File: {cache.map_file if cache.map_file else 'None'}\n"
             f"Cluster Dir: {cache.cluster_dir if cache.cluster_dir else 'None'}\n"
             f"Output Dir: {cache.output_dir}\n"
@@ -250,21 +247,12 @@ class ArkViewer:
             f"LD Lib: {os.environ.get('LD_LIBRARY_PATH')}\n"
         )
         log.info(txt)
-        try:
-            if IS_WINDOWS and not dotnet_installed():
-                log.info("Dotnet not installed!")
-                return False
-        except FileNotFoundError:
-            log.error("Failed to check .NET version!")
 
         if not cache.map_file or not cache.map_file.exists():
             log.error("Map file does not exist!")
             return False
         if cache.cluster_dir and not cache.cluster_dir.exists():
             log.error("Cluster dir does not exist!")
-            return False
-        if not cache.exe_file.exists():
-            log.error("Exporter does not exist!")
             return False
 
         if cpus < 4:
@@ -282,56 +270,11 @@ class ArkViewer:
         else:
             asyncio.create_task(export_loop(), name="export_loop")
 
-        # Start the exporter log tailing task
-        if EXPORTER_LOGS.exists():
-            asyncio.create_task(self.tail_exporter_logs(), name="exporter_logs")
-        else:
-            log.warning(
-                f"Exporter log file not found at {EXPORTER_LOGS}, log tailing will be disabled"
-            )
-
         asyncio.create_task(self.server(), name="arkview_server")
         asyncio.create_task(load_outputs(), name="load_outputs")
         if IS_WINDOWS and IS_EXE:
             asyncio.create_task(status_bar(), name="status_bar")
         return True
-
-    async def tail_exporter_logs(self):
-        """Follow the exporter logs and add them to the application logs."""
-        try:
-            log.info(f"Starting to tail exporter logs at {EXPORTER_LOGS}")
-            async for line in follow_logs(EXPORTER_LOGS):
-                # Filter out empty lines
-                if not line.strip():
-                    continue
-
-                # Parse the log format: timestamp|LEVEL|message
-                parts = line.strip().split("|", 2)
-                if len(parts) >= 3:
-                    _, level, message = parts
-                    level = level.upper()
-
-                    # Use appropriate logging level based on parsed level
-                    if level == "ERROR":
-                        log.error(f"[Exporter] {message}")
-                    elif level == "WARNING" or level == "WARN":
-                        log.warning(f"[Exporter] {message}")
-                    elif level == "INFO":
-                        log.info(f"[Exporter] {message}")
-                    elif level == "DEBUG":
-                        log.debug(f"[Exporter] {message}")
-                    else:
-                        log.info(f"[Exporter] {line}")
-                else:
-                    # Fallback for lines that don't match expected format
-                    log.info(f"[Exporter] {line}")
-
-        except FileNotFoundError:
-            log.error(f"Exporter log file not found at {EXPORTER_LOGS}")
-        except asyncio.CancelledError:
-            log.info("Exporter log tailing task cancelled")
-        except Exception as e:
-            log.error("Error tailing exporter logs", exc_info=e)
 
     async def server(self):
         global cache
@@ -350,7 +293,6 @@ class ArkViewer:
             workers=1,
         )
         server = Server(config)
-        multiprocessing.freeze_support()
         try:
             await server.serve()
         except (KeyboardInterrupt, RuntimeError):

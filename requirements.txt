@@ -1,13 +1,9 @@
-aiohttp
 apscheduler
+arkparser>=0.4.6,<1.0.0
 colorama
 fastapi
-fastapi-utils==0.2.1
-msgpack
+fastapi-utils>=0.8.0
 orjson
-pandas
-Pillow
-plotly
 pre-commit
 psutil
 py-cpuinfo
@@ -15,4 +11,5 @@ pydantic
 PyInstaller
 pytz
 sentry_sdk
+typing-inspect
 uvicorn

@@ -1,0 +1,63 @@
+# Templated systemd unit. `%i` = whatever you put after the @.
+#
+#   sudo systemctl enable --now arkview@theisland.service
+#   sudo systemctl status arkview@theisland.service
+#   journalctl -u arkview@theisland -f
+#
+# Layout assumed:
+#   /opt/arkviewer/                         code + shared venv
+#   /opt/arkviewer/.venv/bin/python
+#   /opt/arkviewer/main.py
+#   /opt/arkviewer/maps/<name>/config.ini   per-instance config
+#   /opt/arkviewer/maps/<name>/output/      per-instance JSON output (auto-created)
+#   /opt/arkviewer/maps/<name>/logs.log     per-instance log (auto-created)
+#
+# One shared install serves every map: ARKVIEWER_CONFIG / ARKVIEWER_OUTPUT make
+# each instance read its own config and write its own output. There is no
+# database; saves are read-only (ArkViewer never writes them).
+
+[Unit]
+Description=ArkViewer (%i)
+Documentation=https://github.com/vertyco/arkview
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arkviewer
+Group=arkviewer
+# CWD is the per-map dir so the relative logs.log lands inside ReadWritePaths.
+WorkingDirectory=/opt/arkviewer/maps/%i
+
+Environment=ARKVIEWER_CONFIG=/opt/arkviewer/maps/%i/config.ini
+Environment=ARKVIEWER_OUTPUT=/opt/arkviewer/maps/%i/output
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/opt/arkviewer/.venv/bin/python /opt/arkviewer/main.py
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# Resource ceiling. The parser runs in a child process that peaks ~2 GB on a
+# large map (TheIsland); the cap covers server + child + headroom. Raise it for
+# very large/modded maps if you see the unit OOM-killed mid-parse.
+MemoryMax=4G
+TasksMax=256
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/arkviewer/maps/%i
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
