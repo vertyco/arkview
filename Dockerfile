@@ -47,4 +47,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/ | grep -qE "^(200|401)$" || exit 1
 
-CMD ["python", "main.py"]
+# Bind 0.0.0.0 explicitly (argv[1] overrides the host): inside a container the
+# service runs as plain `python`, and the in-code default binds 127.0.0.1 when
+# not frozen — which the published port mapping can't reach.
+CMD ["python", "main.py", "0.0.0.0"]

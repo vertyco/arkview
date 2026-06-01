@@ -92,12 +92,19 @@ class ArkViewer:
                 "Missing settings in config file: %s. Updating config with defaults.",
                 ", ".join(missing),
             )
-            with cache.config.open("a", encoding="utf-8") as cf:
-                for key in missing:
-                    block = get_default_block(key)
-                    cf.write("\n" + block + "\n")
-            parser.read(str(cache.config))
-            settings = parser["Settings"]
+            try:
+                with cache.config.open("a", encoding="utf-8") as cf:
+                    for key in missing:
+                        block = get_default_block(key)
+                        cf.write("\n" + block + "\n")
+                parser.read(str(cache.config))
+                settings = parser["Settings"]
+            except OSError as exc:
+                log.warning(
+                    "Could not persist defaults to a read-only config (%s); using built-in fallbacks for: %s",
+                    exc,
+                    ", ".join(missing),
+                )
 
         parsed = [f"{k}: {v}\n" for k, v in settings.items()]
         log.info(f"Parsed settings\n{''.join(parsed)}")
