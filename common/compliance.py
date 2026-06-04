@@ -35,12 +35,15 @@ ABANDONED_TRIBE_ID = -2147483648
 # e.g. 241f with pipes vs 38.9f walls-only). They count toward totals but are
 # excluded from clustering and extent measurement. Water tanks/taps and tree sap
 # taps are the endpoints of those same irrigation runs and create phantom build
-# locations when counted (live check 2026-06-04 VAL/ISLAND PvE). Keywords are
-# deliberately specific: a bare "tap" would also match StructureTurretCatapult.
+# locations when counted (live check 2026-06-04 VAL/ISLAND PvE). Electrical runs
+# (ElectricCable*_C, ElectricJunction_C, BP_Wire_Flex_C) match via "cable",
+# "junction" and "flex"; generators stay counted (real base footprint). Keywords
+# are deliberately specific: a bare "tap" would also match StructureTurretCatapult,
+# and a bare "wire" would match C4Tripwire (fleet survey 2026-06-04: "flex"
+# covers every legit wire class).
 UTILITY_KEYWORDS = (
     "pipe",
     "cable",
-    "wire",
     "flex",
     "junction",
     "outlet",

@@ -255,6 +255,38 @@ def test_utility_runs_do_not_chain_bases():
     assert result[0]["total_structures"] == 40 + len(pipes)
 
 
+def test_electrical_runs_are_utility():
+    # Electrical cable/junction runs (incl. flex wires) must not chain two
+    # compliant bases into one oversized "base", but a C4 tripwire is a real
+    # structure (no bare-"wire" keyword false positive).
+    electrical_classes = (
+        "ElectricCableStraight_C",
+        "ElectricCableIntersection_C",
+        "Electric_Cable_Vertical_C",
+        "ElectricCableDiagonal_C",
+        "ElectricJunction_C",
+        "BP_Wire_Flex_C",
+    )
+    run = []
+    for n in range(3000, 60_000, 3000):
+        s = make_structure(1000, x=float(n), y=0.0)
+        s["struct"] = electrical_classes[n // 3000 % len(electrical_classes)]
+        run.append(s)
+    tripwire = make_structure(1000, x=200_000.0, y=0.0)
+    tripwire["struct"] = "C4Tripwire_C"
+    structures = (
+        block(1000, 20, origin_x=0.0)
+        + block(1000, 20, origin_x=60_000.0)
+        + run
+        + [tripwire]
+    )
+    result = compute_compliance(structures, max_extent=80.0)
+    assert "base_too_large" not in result[0]["violations"]
+    assert result[0]["utility_count"] == len(run)
+    spam = [loc for loc in result[0]["locations"] if loc["classification"] == "spam"]
+    assert len(spam) == 1 and spam[0]["structure_count"] == 1
+
+
 def test_water_tanks_and_taps_are_utility():
     # A remote irrigation endpoint (tank + taps + sap tap) must not register as
     # an extra build location for rule 4.1, but a catapult must (no bare-"tap"
