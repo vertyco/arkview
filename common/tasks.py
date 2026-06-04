@@ -15,6 +15,7 @@ from fastapi_utils.cbv import cbv
 from fastapi_utils.inferring_router import InferringRouter
 from uvicorn import Config, Server
 
+from common.compliance import compute_compliance
 from common.constants import (
     DEFAULT_CONF,
     IGNORED_DINO_PATHS,
@@ -541,6 +542,68 @@ class ArkViewer:
 
         over_limit: dict[str, list[dict]] = await asyncio.to_thread(_exe)
         return JSONResponse(content={"overlimit": over_limit, **self.info()})
+
+    @router.get("/compliance")
+    async def get_compliance(
+        self,
+        request: Request,
+        max_extent: float = 80.0,
+        outpost_max: int = 300,
+        spam_threshold: int = 10,
+        gap: float = 20.0,
+        foundation_uu: float = 300.0,
+    ):
+        """Per-tribe base compliance facts (PvE structure rules 4.1/4.2)."""
+        await self.check_keys(request)
+        global cache
+        if (
+            min(
+                max_extent,
+                float(outpost_max),
+                float(spam_threshold),
+                gap,
+                foundation_uu,
+            )
+            <= 0
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="All compliance parameters must be positive!",
+                headers=self.info(stringify=True),
+            )
+        structures = cache.exports.get("structures")
+        tribes = cache.exports.get("tribes")
+        if not structures or not tribes:
+            # Tribes must be cached too: without members the consumers' player-to-tribe
+            # matching silently reports "no base found" instead of retrying later
+            raise HTTPException(
+                status_code=404,
+                detail="Structures/tribes data not cached yet!",
+                headers=self.info(stringify=True),
+            )
+
+        def _exe():
+            return compute_compliance(
+                structures["data"],
+                tribes["data"] if tribes else None,
+                max_extent=max_extent,
+                outpost_max=outpost_max,
+                spam_threshold=spam_threshold,
+                gap=gap,
+                foundation_uu=foundation_uu,
+            )
+
+        compliance: list[dict] = await asyncio.to_thread(_exe)
+        params = {
+            "max_extent": max_extent,
+            "outpost_max": outpost_max,
+            "spam_threshold": spam_threshold,
+            "gap": gap,
+            "foundation_uu": foundation_uu,
+        }
+        return JSONResponse(
+            content={"compliance": compliance, "params": params, **self.info()}
+        )
 
     @router.post("/datas")
     async def get_datas(self, request: Request, datatypes: Dtypes):
