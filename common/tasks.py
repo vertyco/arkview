@@ -552,6 +552,7 @@ class ArkViewer:
         spam_threshold: int = 10,
         gap: float = 20.0,
         foundation_uu: float = 300.0,
+        exempt: str = "server admin,server staff",
     ):
         """Per-tribe base compliance facts (PvE structure rules 4.1/4.2)."""
         await self.check_keys(request)
@@ -581,6 +582,9 @@ class ArkViewer:
                 detail="Structures/tribes data not cached yet!",
                 headers=self.info(stringify=True),
             )
+        exempt_tribes = frozenset(
+            name.strip().lower() for name in exempt.split(",") if name.strip()
+        )
 
         def _exe():
             return compute_compliance(
@@ -591,6 +595,7 @@ class ArkViewer:
                 spam_threshold=spam_threshold,
                 gap=gap,
                 foundation_uu=foundation_uu,
+                exempt_tribes=exempt_tribes,
             )
 
         compliance: list[dict] = await asyncio.to_thread(_exe)
@@ -600,6 +605,7 @@ class ArkViewer:
             "spam_threshold": spam_threshold,
             "gap": gap,
             "foundation_uu": foundation_uu,
+            "exempt": sorted(exempt_tribes),
         }
         return JSONResponse(
             content={"compliance": compliance, "params": params, **self.info()}

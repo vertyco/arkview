@@ -29,7 +29,32 @@ import typing as t
 # Legacy ASVExport sentinel for unowned structures (C# int.MinValue). These are
 # map decorations / abandoned debris, never a player base, so they are skipped.
 ABANDONED_TRIBE_ID = -2147483648
-MAX_CELL_SCAN = 2  # union cells within a 2-cell radius (see cluster_points)
+
+# Pipe/cable runs bridge physically separate bases (live audit 2026-06-04: 17/60
+# island-pve base_too_large flags existed ONLY because of irrigation/cable runs,
+# e.g. 241f with pipes vs 38.9f walls-only). They count toward totals but are
+# excluded from clustering and extent measurement.
+UTILITY_KEYWORDS = ("pipe", "cable", "wire", "flex", "junction", "outlet")
+
+# A lone sleeping bag is not a spam violation. Live audit: 199/287 island-pve
+# violators were spam-only, dominated by single-structure "clusters" (sleeping
+# bags, campfires, sap taps). Only flag spam when it shows a littering pattern.
+SPAM_MIN_CLUSTERS = 3  # this many separate spam clusters, or
+SPAM_MIN_STRUCTURES = 15  # this many total structures across spam clusters
+
+# Staff tribes are not subject to player base rules (lowercase exact names).
+# Overridable per request via the endpoint's `exempt` query param.
+EXEMPT_TRIBES = frozenset({"server admin", "server staff"})
+
+
+def is_utility(struct_class: str) -> bool:
+    """True for utility-run structures that connect bases without being base footprint.
+
+    Pre: struct_class is a str (possibly empty). Post: bool.
+    """
+    assert isinstance(struct_class, str), "struct_class must be a string"
+    low = struct_class.lower()
+    return any(k in low for k in UTILITY_KEYWORDS)
 
 
 def parse_ccc(ccc: str) -> t.Optional[tuple[float, float, float]]:
@@ -50,68 +75,52 @@ def parse_ccc(ccc: str) -> t.Optional[tuple[float, float, float]]:
 
 
 def cluster_points(points: list[tuple[float, float]], gap_uu: float) -> list[int]:
-    """Label 2D points into clusters via grid union-find.
+    """Label 2D points into clusters via exact single-linkage within gap_uu.
 
-    Cell size = gap_uu. Cells within MAX_CELL_SCAN Chebyshev distance are
-    unioned, so any two points closer than gap_uu always share a label
-    (no false splits); points up to ~3*gap_uu apart may merge (acceptable:
-    bases that close are effectively one base).
+    Two points share a label when they sit within gap_uu of each other,
+    directly or through a chain of points. Grid buckets (cell side = gap_uu)
+    bound the search: two points within gap_uu can never be more than one cell
+    apart on either axis, so only the 3x3 neighborhood is scanned, with an
+    exact euclidean check per candidate. This replaces the earlier blind
+    cell-union approach, which merged separate bases up to ~3*gap_uu apart
+    (live audit 2026-06-04: 18/60 island-pve base_too_large flags were pure
+    grid artifacts, e.g. 169.3f reported vs 57.5f actual).
 
     Pre: gap_uu > 0. Post: returns one int label per input point.
     """
     assert gap_uu > 0, "gap_uu must be positive"
     if not points:
         return []
-    # Why a grid instead of pairwise distances: comparing every structure to
-    # every other one is O(n^2) and a single megabase can hold 20k+ structures.
-    # Snapping points onto a coarse grid and unioning neighboring cells gives
-    # the same "things near each other belong together" answer in O(n).
-    cells: dict[tuple[int, int], int] = {}
-    parent: list[int] = []
+    cells: dict[tuple[int, int], list[int]] = {}
+    for i, (x, y) in enumerate(points):
+        cells.setdefault((int(x // gap_uu), int(y // gap_uu)), []).append(i)
 
-    # Classic union-find (disjoint set) over grid cells. parent[i] points at
-    # another set member; following the chain reaches the set's root, which
-    # serves as the cluster label. find() uses path-halving so repeated lookups
-    # flatten the chains.
-    def find(i: int) -> int:
-        assert 0 <= i < len(parent), "index out of range"
-        while parent[i] != i:
-            parent[i] = parent[parent[i]]
-            i = parent[i]
-        return i
+    labels = [-1] * len(points)
+    gap_sq = gap_uu * gap_uu
+    for start in range(len(points)):
+        if labels[start] != -1:
+            continue
+        # Flood-fill one connected component. Each point enters the stack at
+        # most once (its label is set before pushing), so the loop is bounded
+        # by the number of points.
+        labels[start] = start
+        stack = [start]
+        while stack:
+            i = stack.pop()
+            xi, yi = points[i]
+            ci, cj = int(xi // gap_uu), int(yi // gap_uu)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for j in cells.get((ci + dx, cj + dy), ()):
+                        if labels[j] != -1:
+                            continue
+                        xj, yj = points[j]
+                        if (xi - xj) ** 2 + (yi - yj) ** 2 <= gap_sq:
+                            labels[j] = start
+                            stack.append(j)
 
-    def union(a: int, b: int) -> None:
-        assert 0 <= a < len(parent), "index out of range"
-        assert 0 <= b < len(parent), "index out of range"
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[rb] = ra
-
-    # Pass 1: assign each point to a square grid cell of side gap_uu. Each
-    # newly seen cell becomes its own one-element set.
-    point_cells: list[tuple[int, int]] = []
-    for x, y in points:
-        cell = (int(x // gap_uu), int(y // gap_uu))
-        point_cells.append(cell)
-        if cell not in cells:
-            cells[cell] = len(parent)
-            parent.append(len(parent))
-
-    # Pass 2: union every occupied cell with occupied neighbors up to
-    # MAX_CELL_SCAN cells away (a 5x5 window). Points closer than gap_uu can
-    # land in adjacent cells at worst, so they always end up unioned: no base
-    # is ever split in half. The cost is some over-merge (see docstring).
-    for (cx, cy), idx in cells.items():
-        for dx in range(-MAX_CELL_SCAN, MAX_CELL_SCAN + 1):
-            for dy in range(-MAX_CELL_SCAN, MAX_CELL_SCAN + 1):
-                neighbor = cells.get((cx + dx, cy + dy))
-                if neighbor is not None and neighbor != idx:
-                    union(idx, neighbor)
-
-    # Pass 3: every point's label is the root of its cell's set. Points whose
-    # cells were unioned share a root, i.e. share a base.
-    labels = [find(cells[cell]) for cell in point_cells]
     assert len(labels) == len(points), "one label per point required"
+    assert all(label >= 0 for label in labels), "every point must be labeled"
     return labels
 
 
@@ -196,9 +205,12 @@ def classify_and_judge(
     outposts = [loc for loc in real if loc["classification"] == "outpost"]
     if outposts and outposts[0]["structure_count"] >= outpost_max:
         violations.append("outpost_too_big")
-    # Any stray small cluster is flagged for cleanup; it does not count as a
-    # base location but it is still against the rules to leave it around.
-    if any(loc["classification"] == "spam" for loc in locations):
+    # Stray small clusters are flagged for cleanup, but only when they show a
+    # littering pattern: several separate clusters or a meaningful structure
+    # count. A single forgotten sleeping bag is not a violation.
+    spam_locs = [loc for loc in locations if loc["classification"] == "spam"]
+    spam_total = sum(loc["structure_count"] for loc in spam_locs)
+    if len(spam_locs) >= SPAM_MIN_CLUSTERS or spam_total >= SPAM_MIN_STRUCTURES:
         violations.append("spam_present")
     return violations
 
@@ -219,12 +231,22 @@ def build_tribe_record(
     """
     assert tribe_structures, "tribe_structures must be non-empty"
     assert gap_uu > 0, "gap_uu must be positive"
-    # Split structures into locatable (valid "x y z" ccc) and unlocatable.
-    # Unlocatable ones still count toward the tribe's total but cannot be
-    # clustered, so they are surfaced separately as unlocated_count.
+    # Utility runs (pipes/cables) count toward the tribe's total but are kept
+    # out of clustering and extent math: a water line to the ocean is not part
+    # of the base footprint and chains separate bases into one giant cluster.
+    solid: list[dict] = []
+    utility_count = 0
+    for s in tribe_structures:
+        if is_utility(str(s.get("struct") or "")):
+            utility_count += 1
+            continue
+        solid.append(s)
+    # Split solid structures into locatable (valid "x y z" ccc) and
+    # unlocatable. Unlocatable ones still count toward the tribe's total but
+    # cannot be clustered, so they are surfaced separately as unlocated_count.
     located: list[dict] = []
     coords: list[tuple[float, float, float]] = []
-    for s in tribe_structures:
+    for s in solid:
         parsed = parse_ccc(s.get("ccc", "") or "")
         if parsed is None:
             continue
@@ -253,7 +275,8 @@ def build_tribe_record(
         "tribeid": tribeid,
         "tribe": tribe_name,
         "total_structures": len(tribe_structures),
-        "unlocated_count": len(tribe_structures) - len(located),
+        "unlocated_count": len(solid) - len(located),
+        "utility_count": utility_count,
         "locations": locations,
         "violations": violations,
         "members": members,
@@ -269,11 +292,13 @@ def compute_compliance(
     spam_threshold: int = 10,
     gap: float = 20.0,
     foundation_uu: float = 300.0,
+    exempt_tribes: frozenset[str] = EXEMPT_TRIBES,
 ) -> list[dict]:
     """Compute per-tribe base compliance facts from ASV_Structures records.
 
     Pre: structures is a list of legacy structure dicts. Post: one record per
-    real tribe (abandoned excluded), each with locations + violations + members.
+    real tribe (abandoned and exempt excluded), each with locations +
+    violations + members.
     """
     assert isinstance(structures, list), "structures must be a list"
     assert (
@@ -288,6 +313,13 @@ def compute_compliance(
         if tribeid == ABANDONED_TRIBE_ID:
             continue
         by_tribe.setdefault(tribeid, []).append(s)
+    # Exempt staff/admin tribes wholesale (lowercase name match, same field the
+    # record's tribe name comes from) so they never appear as violators.
+    by_tribe = {
+        tribeid: tribe_structures
+        for tribeid, tribe_structures in by_tribe.items()
+        if str(tribe_structures[0].get("tribe") or "").lower() not in exempt_tribes
+    }
 
     # Index tribe members from the ASV_Tribes export (sourced from .arktribe
     # sidecar files) so each record carries who to contact. Consumers map the
