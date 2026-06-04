@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+﻿# Byte-compiled / optimized / DLL files
 .idea/
 __pycache__/
 *.py[cod]
@@ -130,7 +130,7 @@ dmypy.json
 .pyre/
 output/
 testdata/
-tests/
+# tests/ intentionally tracked (compliance unit tests)
 releases/
 
 # other
