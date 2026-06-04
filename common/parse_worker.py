@@ -37,7 +37,13 @@ def run_export(map_file: str, output_dir: str, cluster_dir: str | None) -> None:
     if not map_path.exists():
         raise FileNotFoundError(f"Map file does not exist: {map_file}")
 
-    save = WorldSave.load(map_file)  # auto-detects ASE flat-binary vs ASA SQLite
+    # lazy_properties: property blocks parse on first access and the export
+    # drivers evict them per record, so the parse child's peak RSS stays
+    # bounded by the headers + one record's properties instead of the whole
+    # object graph (arkparser 0.6.0; output is golden-verified identical).
+    # Busy-save measurements: Fjordur PvE ASE 7.1 GB / 348 s eager ->
+    # 2.5 GB / 287 s lazy; ASA TheIsland 853 MB / 38 s -> 307 MB / ~36 s.
+    save = WorldSave.load(map_file, lazy_properties=True)  # ASE or ASA, auto-detected
     map_config = get_map_config(map_path.name)
 
     map_dir = map_path.parent
