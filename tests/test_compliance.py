@@ -255,6 +255,36 @@ def test_utility_runs_do_not_chain_bases():
     assert result[0]["total_structures"] == 40 + len(pipes)
 
 
+def test_water_tanks_and_taps_are_utility():
+    # A remote irrigation endpoint (tank + taps + sap tap) must not register as
+    # an extra build location for rule 4.1, but a catapult must (no bare-"tap"
+    # keyword false positive).
+    waterworks = []
+    for n, cls in enumerate(
+        ("WaterTank_Metal_C", "WaterTap_Metal_C", "WaterTap_C", "TreeSapTap_SM_C")
+    ):
+        s = make_structure(1000, x=200_000.0 + n * 300.0, y=0.0)
+        s["struct"] = cls
+        waterworks.append(s)
+    catapults = []
+    for n in range(12):
+        s = make_structure(1000, x=400_000.0 + n * 300.0, y=0.0)
+        s["struct"] = "StructureTurretCatapult_C"
+        catapults.append(s)
+    structures = (
+        block(1000, 20, origin_x=0.0)
+        + block(1000, 20, origin_x=60_000.0)
+        + waterworks
+        + catapults
+    )
+    result = compute_compliance(structures)
+    assert result[0]["utility_count"] == len(waterworks)
+    # main + outpost + the catapult battery = 3 real locations -> violation
+    assert "too_many_locations" in result[0]["violations"]
+    real = [loc for loc in result[0]["locations"] if loc["classification"] != "spam"]
+    assert len(real) == 3
+
+
 def test_exempt_tribe_excluded():
     structures = block(1000, 500, origin_x=0.0, span_foundations=120.0) + block(
         2000, 50, origin_x=300_000.0

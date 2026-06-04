@@ -33,8 +33,21 @@ ABANDONED_TRIBE_ID = -2147483648
 # Pipe/cable runs bridge physically separate bases (live audit 2026-06-04: 17/60
 # island-pve base_too_large flags existed ONLY because of irrigation/cable runs,
 # e.g. 241f with pipes vs 38.9f walls-only). They count toward totals but are
-# excluded from clustering and extent measurement.
-UTILITY_KEYWORDS = ("pipe", "cable", "wire", "flex", "junction", "outlet")
+# excluded from clustering and extent measurement. Water tanks/taps and tree sap
+# taps are the endpoints of those same irrigation runs and create phantom build
+# locations when counted (live check 2026-06-04 VAL/ISLAND PvE). Keywords are
+# deliberately specific: a bare "tap" would also match StructureTurretCatapult.
+UTILITY_KEYWORDS = (
+    "pipe",
+    "cable",
+    "wire",
+    "flex",
+    "junction",
+    "outlet",
+    "watertank",
+    "watertap",
+    "saptap",
+)
 
 # A lone sleeping bag is not a spam violation. Live audit: 199/287 island-pve
 # violators were spam-only, dominated by single-structure "clusters" (sleeping
