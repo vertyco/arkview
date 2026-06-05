@@ -101,9 +101,10 @@ def test_outpost_too_big():
 
 
 def test_base_too_large():
-    # chain structures across 100 foundations: one cluster, extent > 80
+    # contiguous run of structures spanning 100 foundations (4f spacing keeps
+    # it one core building): extent > 80 -> violation
     structures = [
-        make_structure(1000, x=i * 10 * FOUNDATION, y=0.0) for i in range(11)
+        make_structure(1000, x=i * 4 * FOUNDATION, y=0.0) for i in range(26)
     ] + block(1000, 20, origin_x=0.0)
     result = compute_compliance(structures, max_extent=80.0)
     assert "base_too_large" in result[0]["violations"]
@@ -177,14 +178,43 @@ def test_members_enriched_from_tribes():
 
 
 def test_extent_exactly_80_not_violating():
-    # exactly 80 foundations extent: > comparison, not >=
+    # exactly 80 foundations of contiguous extent: > comparison, not >=
     structures = [make_structure(1000, x=0.0, y=0.0) for _ in range(10)]
     structures += [make_structure(1000, x=80 * FOUNDATION, y=0.0) for _ in range(10)]
-    # chain so it stays one cluster (spacing 15 foundations = 4500 UU < gap 6000 UU)
+    # 4f spacing keeps the whole span one core building
     structures += [
-        make_structure(1000, x=i * 15 * FOUNDATION, y=0.0) for i in range(1, 6)
+        make_structure(1000, x=i * 4 * FOUNDATION, y=0.0) for i in range(1, 20)
     ]
     result = compute_compliance(structures, max_extent=80.0)
+    assert "base_too_large" not in result[0]["violations"]
+
+
+def test_stray_structure_does_not_inflate_extent():
+    # A compliant 10f building with a lone trough 15 foundations away: same
+    # location (within the 20f gap) but the extent must stay the core's 10f,
+    # not stretch to 25f. (Live dispute: 69x70f build reported as 103x87f
+    # because of a spike-wall line and a feeding trough.)
+    structures = block(1000, 50, origin_x=0.0)
+    stray = make_structure(1000, x=25 * FOUNDATION, y=0.0)
+    stray["struct"] = "FeedingTrough_C"
+    structures.append(stray)
+    result = compute_compliance(structures, max_extent=80.0)
+    assert len(result[0]["locations"]) == 1
+    ext = result[0]["locations"][0]["extent_foundations"]
+    assert max(ext["x"], ext["y"]) <= 10.0
+    assert "base_too_large" not in result[0]["violations"]
+
+
+def test_two_buildings_bridged_within_gap_sized_by_core():
+    # Two compliant 40f buildings 15 foundations apart chain into ONE location
+    # at the 20f gap, but the size check measures the larger core building,
+    # so no base_too_large even though the loose bbox spans ~95f.
+    structures = block(1000, 100, origin_x=0.0, span_foundations=40.0) + block(
+        1000, 80, origin_x=55 * FOUNDATION, span_foundations=40.0
+    )
+    result = compute_compliance(structures, max_extent=80.0)
+    real = [loc for loc in result[0]["locations"] if loc["classification"] != "spam"]
+    assert len(real) == 1
     assert "base_too_large" not in result[0]["violations"]
 
 

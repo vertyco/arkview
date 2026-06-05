@@ -140,6 +140,16 @@ def cluster_points(points: list[tuple[float, float]], gap_uu: float) -> list[int
     return labels
 
 
+# A location is grouped loosely (gap, default 20 foundations) but SIZED on its
+# largest contiguous building: structures linked within this many foundations.
+# Live audit 2026-06-05: a stray trough / spike-wall line / lamp post inside the
+# 20f gap was inflating bounding boxes far past the wiki limit (e.g. a compliant
+# 69x70f build reported as 103x87f), causing constant "my base isn't that big"
+# disputes. Core sizing cut base_too_large flags ~85% across VAL/ISLAND/RAG PvE
+# while every surviving flag was a genuinely contiguous 100f+ build.
+CORE_GAP_FOUNDATIONS = 5.0
+
+
 def build_location(
     cluster: list[dict],
     coords: list[tuple[float, float, float]],
@@ -154,7 +164,6 @@ def build_location(
     assert foundation_uu > 0, "foundation_uu must be positive"
     xs = [c[0] for c in coords]
     ys = [c[1] for c in coords]
-    zs = [c[2] for c in coords]
     # Pick a real structure nearest the bounding-box center to represent the
     # base. Using an actual structure (not the abstract midpoint) means the
     # reported lat/lon/ccc is somewhere staff can teleport to and find walls.
@@ -164,6 +173,19 @@ def build_location(
         range(len(coords)),
         key=lambda i: (coords[i][0] - cx) ** 2 + (coords[i][1] - cy) ** 2,
     )
+    # Size the location on its largest contiguous building (core), not the
+    # loose 20f-grouped bounding box: detached troughs/spike lines/lamp posts
+    # stay part of the location without inflating its measured extent.
+    core_labels = cluster_points(
+        [(c[0], c[1]) for c in coords], CORE_GAP_FOUNDATIONS * foundation_uu
+    )
+    core_groups: dict[int, list[int]] = {}
+    for i, label in enumerate(core_labels):
+        core_groups.setdefault(label, []).append(i)
+    core = max(core_groups.values(), key=len)
+    core_xs = [coords[i][0] for i in core]
+    core_ys = [coords[i][1] for i in core]
+    core_zs = [coords[i][2] for i in core]
     return {
         # Tiny clusters are "spam" (stray pens, lone foundations); everything
         # else is left blank here and ranked main/outpost/extra later, once
@@ -173,13 +195,13 @@ def build_location(
         "center_lat": cluster[mid].get("lat"),
         "center_lon": cluster[mid].get("lon"),
         "center_ccc": cluster[mid].get("ccc", ""),
-        # Axis-aligned bounding box converted from UU to foundations. This is
-        # how staff measure today (gate to gate), so 80 here means the wiki's
-        # "80 foundations" rule, independent of which map the save came from.
+        # Axis-aligned bounding box of the core building converted from UU to
+        # foundations. This is how staff measure today (gate to gate), so 80
+        # here means the wiki's "80 foundations" rule on the connected build.
         "extent_foundations": {
-            "x": round((max(xs) - min(xs)) / foundation_uu, 1),
-            "y": round((max(ys) - min(ys)) / foundation_uu, 1),
-            "z": round((max(zs) - min(zs)) / foundation_uu, 1),
+            "x": round((max(core_xs) - min(core_xs)) / foundation_uu, 1),
+            "y": round((max(core_ys) - min(core_ys)) / foundation_uu, 1),
+            "z": round((max(core_zs) - min(core_zs)) / foundation_uu, 1),
         },
     }
 
