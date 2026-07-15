@@ -188,7 +188,7 @@ async def _process_export():
     ctx = multiprocessing.get_context("spawn")
     proc = ctx.Process(
         target=run_export,
-        args=(str(map_file), str(cache.output_dir), cluster_arg),
+        args=(str(map_file), str(cache.output_dir), cluster_arg, priority),
         name="arkview-parser",
         daemon=False,
     )

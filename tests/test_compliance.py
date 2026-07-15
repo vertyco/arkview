@@ -1,8 +1,19 @@
+import datetime
+
 from common.compliance import (
     ABANDONED_TRIBE_ID,
+    cluster_demoable,
     cluster_points,
+    cluster_tier,
     compute_compliance,
+    decay_period_days,
+    has_real_structure,
+    is_built_area,
+    is_litter,
+    material_of,
     parse_ccc,
+    structure_age_days,
+    structure_tier,
 )
 
 
@@ -62,6 +73,21 @@ def block(
     return out
 
 
+def litter_block(tribeid: int, count: int, origin_x: float) -> list[dict]:
+    """A cluster of loose land-claim litter (stone pillars). Under content-based
+    classification this is the only kind of cluster that is 'spam'."""
+    out = block(tribeid, count, origin_x)
+    for s in out:
+        s["struct"] = "Pillar_Stone_C"
+    return out
+
+
+def make_struct_class(tribeid: int, x: float, cls: str) -> dict:
+    s = make_structure(tribeid, x, 0.0)
+    s["struct"] = cls
+    return s
+
+
 def test_single_compliant_base():
     structures = block(1000, count=50, origin_x=0.0)
     result = compute_compliance(structures)
@@ -111,14 +137,14 @@ def test_base_too_large():
 
 
 def test_spam_flagged_when_pattern():
-    # 3 separate spam clusters = littering pattern -> violation
+    # 3 separate loose-litter clusters = littering pattern -> violation
     structures = (
         block(1000, 50, origin_x=0.0)
-        + block(1000, 3, origin_x=200_000.0)
-        + block(1000, 3, origin_x=400_000.0)
-        + block(1000, 3, origin_x=600_000.0)
+        + litter_block(1000, 3, origin_x=200_000.0)
+        + litter_block(1000, 3, origin_x=400_000.0)
+        + litter_block(1000, 3, origin_x=600_000.0)
     )
-    result = compute_compliance(structures, spam_threshold=10)
+    result = compute_compliance(structures)
     classes = [loc["classification"] for loc in result[0]["locations"]]
     assert "spam" in classes
     assert "spam_present" in result[0]["violations"]
@@ -126,22 +152,24 @@ def test_spam_flagged_when_pattern():
 
 
 def test_single_small_spam_cluster_not_flagged():
-    # One stray 3-structure cluster is shown as spam but is not a violation
-    structures = block(1000, 50, origin_x=0.0) + block(1000, 3, origin_x=200_000.0)
-    result = compute_compliance(structures, spam_threshold=10)
+    # One stray 3-piece litter cluster is shown as spam but is not a violation
+    structures = block(1000, 50, origin_x=0.0) + litter_block(
+        1000, 3, origin_x=200_000.0
+    )
+    result = compute_compliance(structures)
     classes = [loc["classification"] for loc in result[0]["locations"]]
     assert "spam" in classes
     assert "spam_present" not in result[0]["violations"]
 
 
 def test_spam_flagged_by_structure_total():
-    # Two clusters but 18 total spam structures (>= 15) -> violation
+    # Two litter clusters but 18 total litter structures (>= 15) -> violation
     structures = (
         block(1000, 50, origin_x=0.0)
-        + block(1000, 9, origin_x=200_000.0)
-        + block(1000, 9, origin_x=400_000.0)
+        + litter_block(1000, 9, origin_x=200_000.0)
+        + litter_block(1000, 9, origin_x=400_000.0)
     )
-    result = compute_compliance(structures, spam_threshold=10)
+    result = compute_compliance(structures)
     assert "spam_present" in result[0]["violations"]
 
 
@@ -224,9 +252,22 @@ def test_outpost_at_299_ok():
     assert "outpost_too_big" not in result[0]["violations"]
 
 
+def test_outpost_at_300_ok():
+    # cap is inclusive: exactly outpost_max is compliant, only +1 over flags
+    structures = block(1000, 500, origin_x=0.0) + block(1000, 300, origin_x=200_000.0)
+    result = compute_compliance(structures, outpost_max=300)
+    assert "outpost_too_big" not in result[0]["violations"]
+
+
+def test_outpost_at_301_flags():
+    structures = block(1000, 500, origin_x=0.0) + block(1000, 301, origin_x=200_000.0)
+    result = compute_compliance(structures, outpost_max=300)
+    assert "outpost_too_big" in result[0]["violations"]
+
+
 def test_spam_only_tribe_has_no_main():
-    structures = block(1000, 3, origin_x=0.0)
-    result = compute_compliance(structures, spam_threshold=10)
+    structures = litter_block(1000, 3, origin_x=0.0)
+    result = compute_compliance(structures)
     classes = [loc["classification"] for loc in result[0]["locations"]]
     assert classes == ["spam"]
     # a single small stray cluster is below the littering thresholds
@@ -313,8 +354,11 @@ def test_electrical_runs_are_utility():
     result = compute_compliance(structures, max_extent=80.0)
     assert "base_too_large" not in result[0]["violations"]
     assert result[0]["utility_count"] == len(run)
-    spam = [loc for loc in result[0]["locations"] if loc["classification"] == "spam"]
-    assert len(spam) == 1 and spam[0]["structure_count"] == 1
+    # the C4 tripwire is NOT utility (no bare-"wire"/"flex" match): under the
+    # inverted test a non-litter structure is a real 1-piece location, not spam.
+    assert result[0]["total_structures"] == 40 + len(run) + 1
+    singles = [loc for loc in result[0]["locations"] if loc["structure_count"] == 1]
+    assert len(singles) == 1
 
 
 def test_water_tanks_and_taps_are_utility():
@@ -364,3 +408,348 @@ def test_exempt_override():
         s["tribe"] = "Server Admin"
     result = compute_compliance(structures, exempt_tribes=frozenset())
     assert len(result) == 1
+
+
+# --- content-based spam classification (incident 2026-06-14 fix) ---
+
+
+def test_small_value_cluster_is_not_spam():
+    # A small cluster (< old count threshold) with value structures
+    # (block() uses StorageBox_Large_C) must NOT be spam (never auto-destroyed).
+    # With no walls/foundation it is also not a built area, so it ranks "minor",
+    # not "outpost": a 4-box stash must not fabricate a too_many_locations flag.
+    structures = block(1000, 50, origin_x=0.0) + block(1000, 4, origin_x=200_000.0)
+    result = compute_compliance(structures)
+    classes = sorted(loc["classification"] for loc in result[0]["locations"])
+    assert "spam" not in classes
+    assert classes == ["main", "minor"]
+
+
+def test_small_greenhouse_is_not_spam():
+    # A 4-piece greenhouse (crops + glass), exactly the kind the incident
+    # destroyed, is a real base and must never be spam.
+    gh = [
+        make_struct_class(1000, 200_000.0 + n * 300.0, cls)
+        for n, cls in enumerate(
+            (
+                "CropPlotLarge_SM_C",
+                "CropPlotLarge_SM_C",
+                "Greenhouse_Wall_C",
+                "Greenhouse_Ceiling_C",
+            )
+        )
+    ]
+    result = compute_compliance(block(1000, 50, origin_x=0.0) + gh)
+    classes = [loc["classification"] for loc in result[0]["locations"]]
+    assert "spam" not in classes
+
+
+def test_small_stone_shell_no_value_is_not_spam():
+    # Walls/ceilings with no loot are still a real build, not loose litter.
+    shell = [
+        make_struct_class(1000, 200_000.0 + n * 300.0, cls)
+        for n, cls in enumerate(
+            ("Wall_Stone_C", "Wall_Stone_C", "Ceiling_Stone_C", "Foundation_Stone_C")
+        )
+    ]
+    result = compute_compliance(block(1000, 50, origin_x=0.0) + shell)
+    classes = [loc["classification"] for loc in result[0]["locations"]]
+    assert "spam" not in classes
+
+
+def test_litter_cluster_is_spam():
+    structures = block(1000, 50, origin_x=0.0) + litter_block(
+        1000, 4, origin_x=200_000.0
+    )
+    result = compute_compliance(structures)
+    spam = [loc for loc in result[0]["locations"] if loc["classification"] == "spam"]
+    assert len(spam) == 1 and spam[0]["structure_count"] == 4
+
+
+def test_stray_deployables_do_not_trigger_too_many_locations():
+    # vainne live report 2026-06-16: a tribe with ONE real base plus a lone
+    # WaterWell and a lone OilPump (each its own cluster, far away) was flagged
+    # too_many_locations. Stray deployables are not built areas -> "minor".
+    structures = (
+        block(1000, 50, origin_x=0.0)
+        + [make_struct_class(1000, 200_000.0, "WaterWellWaterIntake_C")]
+        + [make_struct_class(1000, 400_000.0, "OilPump_C")]
+    )
+    result = compute_compliance(structures)
+    assert "too_many_locations" not in result[0]["violations"]
+    classes = sorted(loc["classification"] for loc in result[0]["locations"])
+    assert classes == ["main", "minor", "minor"]
+
+
+def test_real_second_base_still_counts_as_outpost():
+    # A genuine second build (walls on a foundation) is a real outpost and is
+    # still allowed; a third real build trips too_many_locations as before.
+    def shell(origin_x: float) -> list[dict]:
+        return [
+            make_struct_class(1000, origin_x + n * 300.0, cls)
+            for n, cls in enumerate(
+                (
+                    "Foundation_Stone_C",
+                    "Wall_Stone_C",
+                    "Wall_Stone_C",
+                    "Ceiling_Stone_C",
+                )
+            )
+        ]
+
+    two = block(1000, 50, origin_x=0.0) + shell(200_000.0)
+    assert "too_many_locations" not in compute_compliance(two)[0]["violations"]
+    three = two + shell(400_000.0)
+    assert "too_many_locations" in compute_compliance(three)[0]["violations"]
+
+
+def test_mixed_cluster_with_one_value_is_not_spam():
+    # 5 pillars + 1 storage box in the SAME cluster: the value piece protects it.
+    mixed = litter_block(1000, 5, origin_x=200_000.0)
+    mixed.append(make_struct_class(1000, 200_000.0, "StorageBox_Large_C"))
+    result = compute_compliance(block(1000, 50, origin_x=0.0) + mixed)
+    classes = [loc["classification"] for loc in result[0]["locations"]]
+    assert "spam" not in classes
+
+
+def test_large_litter_pile_is_spam_by_content():
+    # Content, not count: 20 pure pillars is spam even though it is over the old
+    # spam_threshold, and trips spam_present (>= 15 litter structures).
+    structures = block(1000, 50, origin_x=0.0) + litter_block(
+        1000, 20, origin_x=200_000.0
+    )
+    result = compute_compliance(structures)
+    spam = [loc for loc in result[0]["locations"] if loc["classification"] == "spam"]
+    assert len(spam) == 1 and spam[0]["structure_count"] == 20
+    assert "spam_present" in result[0]["violations"]
+
+
+# --- Task 1: inverted litter test ---
+
+
+def test_is_litter_claim_pieces():
+    for cls in (
+        "Pillar_Stone_C",
+        "Foundation_Stone_C",
+        "GateFrame_Stone_C",
+        "Gate_Stone_C",
+        "Sign_Large_Wood_C",
+        "SleepingBag_C",
+        "Campfire_C",
+        "FenceFoundation_Wood_SM_C",
+        "BearTrapLarge_C",
+    ):
+        assert is_litter(cls), cls
+
+
+def test_is_litter_excludes_real():
+    for cls in (
+        "Wall_Stone_C",
+        "Ceiling_Stone_C",
+        "StorageBox_Huge_C",
+        "Greenhouse_Wall_C",
+        "BP_Ramp_Stone_C",
+        "IceBox_C",
+    ):
+        assert not is_litter(cls), cls
+
+
+def test_has_real_structure_pure_litter_is_spam():
+    cluster = [{"struct": "Pillar_Stone_C"}, {"struct": "GateFrame_Stone_C"}]
+    assert has_real_structure(cluster) is False
+
+
+def test_has_real_structure_one_wall_makes_it_real():
+    cluster = [{"struct": "Pillar_Stone_C"}, {"struct": "Wall_Stone_C"}]
+    assert has_real_structure(cluster) is True
+
+
+def test_has_real_structure_ramp_makes_it_real():
+    # ramp is a missed-real class under the old keyword test; inverted test protects it
+    assert has_real_structure([{"struct": "BP_Ramp_Stone_C"}]) is True
+
+
+# --- Task 2: value tiers ---
+
+
+def test_structure_tier_levels():
+    assert structure_tier("Pillar_Stone_C") == 0
+    assert structure_tier("Mortar_C") == 1
+    assert structure_tier("StorageBox_C") == 1  # small storage -> trivial
+    assert structure_tier("StorageBox_Huge_C") == 2  # large/huge -> standard
+    assert structure_tier("IceBox_C") == 2  # preserving fridge -> standard value
+    assert structure_tier("ChemBench_C") == 2
+    assert structure_tier("Greenhouse_Wall_C") == 2
+    assert structure_tier("TekGenerator_C") == 3
+    assert structure_tier("StructureTurretPlant_C") == 3
+    assert structure_tier("IndustrialForge_C") == 3  # industrial beats forge(T2)
+
+
+def test_cluster_tier_is_max_member():
+    cluster = [
+        {"struct": "Pillar_Stone_C"},
+        {"struct": "ChemBench_C"},
+        {"struct": "StorageBox_C"},
+    ]
+    assert cluster_tier(cluster) == 2
+
+
+# --- Task 3: decay / demoable ---
+
+NOW = datetime.datetime(2026, 6, 15, 12, 0, tzinfo=datetime.timezone.utc)
+
+
+def _aged(cls, days):
+    dt = NOW - datetime.timedelta(days=days)
+    return {"struct": cls, "ccc": "0 0 0", "last_ally_in_range": dt.isoformat()}
+
+
+def test_material_of():
+    assert material_of("Wall_Stone_C") == "stone"
+    assert material_of("Wall_Metal_C") == "metal"
+    assert material_of("TekWall_C") == "tek"
+    assert material_of("Greenhouse_Wall_C") == "greenhouse"
+    assert material_of("Pillar_Wood_SM_New_C") == "wood"
+    assert material_of("Mystery_C") == ""
+
+
+def test_structure_age_days():
+    assert abs(structure_age_days(_aged("Wall_Stone_C", 10), NOW) - 10.0) < 0.01
+    assert structure_age_days({"last_ally_in_range": ""}, NOW) is None
+
+
+def test_decay_period_days():
+    assert decay_period_days("Wall_Stone_C") == 12.0
+    assert decay_period_days("Wall_Metal_C") == 16.0
+
+
+def test_cluster_demoable_stone():
+    # stone period 12d. Freshest piece 13d idle -> demoable.
+    assert cluster_demoable([_aged("Wall_Stone_C", 13)], NOW) is True
+    assert cluster_demoable([_aged("Wall_Stone_C", 11)], NOW) is False
+
+
+def test_cluster_demoable_uses_toughest_material():
+    # mixed stone(12d)+metal(16d): not demoable until past the toughest (16d)
+    c = [_aged("Wall_Stone_C", 17), _aged("Wall_Metal_C", 17)]
+    assert cluster_demoable(c, NOW) is True
+    c2 = [_aged("Wall_Stone_C", 17), _aged("Wall_Metal_C", 14)]  # metal fresher
+    assert cluster_demoable(c2, NOW) is False
+
+
+def test_compliance_emits_tier_demoable_inactive():
+    structs = [_aged("Wall_Stone_C", 20) for _ in range(40)]
+    for i, s in enumerate(structs):
+        s["tribeid"] = 7
+        s["tribe"] = "Ghosts"
+        s["ccc"] = f"{(i % 10) * 300} {(i // 10) * 300} 0"
+    result = compute_compliance(structs, now=NOW)
+    rec = result[0]
+    assert rec["inactive_days"] >= 19.9
+    loc = rec["locations"][0]
+    assert loc["tier"] == 0
+    assert loc["demoable"] is True
+
+
+# --- Review 2026-07-05 fixes: crash guard, tek-litter, trap promotion, core sizing ---
+
+
+def test_parse_ccc_rejects_non_finite():
+    # float() happily parses these; a non-finite coord would make int(x // gap)
+    # raise ValueError and 500 the whole endpoint.
+    assert parse_ccc("nan nan nan") is None
+    assert parse_ccc("1e999 0 0") is None  # inf
+    assert parse_ccc("0 -inf 0") is None
+
+
+def test_compute_compliance_survives_non_finite_ccc():
+    # One corrupt record must not crash the endpoint; it is counted as unlocated.
+    good = block(1000, 20, origin_x=0.0)
+    bad = make_structure(1000, 0.0, 0.0)
+    bad["struct"] = "Wall_Stone_C"
+    bad["ccc"] = "nan nan nan"
+    result = compute_compliance(good + [bad])
+    assert result[0]["total_structures"] == 21
+    assert result[0]["unlocated_count"] == 1
+
+
+def test_tek_pillar_spam_is_not_a_base():
+    # TekPillar is tier 3 via the bare 'tek' substring but is still land-claim
+    # litter: two pure tek-pillar clusters must be spam, never outpost/extra, so a
+    # one-base tribe is not falsely flagged too_many_locations. Stone pillars in
+    # the same layout always behaved this way; tek was the regression.
+    tek = [
+        make_struct_class(1000, 200_000.0 + n * 300.0, "TekPillar_C") for n in range(10)
+    ]
+    tek += [
+        make_struct_class(1000, 400_000.0 + n * 300.0, "TekPillar_C") for n in range(10)
+    ]
+    result = compute_compliance(block(1000, 50, origin_x=0.0) + tek)
+    classes = [loc["classification"] for loc in result[0]["locations"]]
+    assert "too_many_locations" not in result[0]["violations"]
+    assert "outpost" not in classes and "extra" not in classes
+    assert "spam" in classes
+
+
+def test_taming_trap_does_not_fabricate_outpost():
+    # 9-piece trap: 5 gateframes (litter) + 4 ramps. Too few non-litter pieces to
+    # be a built area, so it stays 'minor' and cannot make a one-base tribe trip
+    # too_many_locations.
+    trap = [
+        make_struct_class(1000, 200_000.0 + n * 300.0, "GateFrame_Stone_C")
+        for n in range(5)
+    ]
+    trap += [
+        make_struct_class(1000, 200_000.0 + (5 + n) * 300.0, "BP_Ramp_Stone_C")
+        for n in range(4)
+    ]
+    assert is_built_area(trap) is False
+    result = compute_compliance(block(1000, 50, origin_x=0.0) + trap)
+    assert "too_many_locations" not in result[0]["violations"]
+
+
+def test_spike_trap_and_wall_torch_are_not_built_areas():
+    # SpikeWallWood / WallTorch must not count toward the 2-walls enclosure test.
+    spike = [
+        make_struct_class(1000, 200_000.0, "SpikeWallWood_C"),
+        make_struct_class(1000, 200_300.0, "SpikeWallWood_C"),
+        make_struct_class(1000, 200_600.0, "Foundation_Wood_C"),
+    ]
+    assert is_built_area(spike) is False
+    torch = [
+        make_struct_class(1000, 0.0, "WallTorch_C"),
+        make_struct_class(1000, 300.0, "WallTorch_C"),
+        make_struct_class(1000, 600.0, "Floor_Wood_C"),
+    ]
+    assert is_built_area(torch) is False
+
+
+def test_storage_outpost_still_counts_as_built_area():
+    # Guard against over-tightening: a real deployable outpost (>=8 non-litter
+    # pieces, no walls) is still a built area and ranks as the outpost.
+    boxes = block(1000, 12, origin_x=200_000.0)  # StorageBox_Large_C
+    assert is_built_area(boxes) is True
+    result = compute_compliance(block(1000, 50, origin_x=0.0) + boxes)
+    classes = sorted(loc["classification"] for loc in result[0]["locations"])
+    assert classes == ["main", "outpost"]
+
+
+def test_oversized_sparse_core_measured_next_to_denser_blob():
+    # Core sizing must measure the largest-EXTENT contiguous build, not the most
+    # populous. A 120f contiguous wall line (41 pieces) beside a denser 9x9f blob
+    # (100 pieces) in one location must still flag base_too_large.
+    line = []
+    for n in range(41):
+        s = make_structure(1000, x=n * 3 * FOUNDATION, y=0.0)
+        s["struct"] = "Wall_Stone_C"
+        line.append(s)
+    blob = []
+    for n in range(100):
+        s = make_structure(
+            1000, x=-15 * FOUNDATION - (n % 10) * FOUNDATION, y=(n // 10) * FOUNDATION
+        )
+        s["struct"] = "Wall_Stone_C"
+        blob.append(s)
+    result = compute_compliance(line + blob, max_extent=80.0)
+    assert len(result[0]["locations"]) == 1
+    assert "base_too_large" in result[0]["violations"]

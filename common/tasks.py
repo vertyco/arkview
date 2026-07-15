@@ -554,7 +554,8 @@ class ArkViewer:
         foundation_uu: float = 300.0,
         exempt: str = "server admin,server staff",
     ):
-        """Per-tribe base compliance facts (PvE structure rules 4.1/4.2)."""
+        """Per-tribe base compliance facts (PvE structure rules 4.1 location
+        count and 4.2 size; the 4.1 cave clause is not enforced)."""
         await self.check_keys(request)
         global cache
         if (

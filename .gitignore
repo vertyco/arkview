@@ -138,3 +138,4 @@ config.ini
 build.py
 *.old
 REWRITE_SPEC.md
+tmp_*/
