@@ -35,13 +35,18 @@ def attach_log_queue(log_queue: "mp.Queue[logging.LogRecord] | None") -> None:
     is how a parse could skip 12% of the playerbase in silence.
 
     Handing records to the parent keeps exactly one process writing the file.
+
+    INFO, not DEBUG: arkparser logs one debug traceback per unparseable cryopod
+    creature, which on a populated map is tens of thousands of records per parse
+    -- enough to bury the WARNING skips this queue exists to surface, and to grow
+    logs.log by megabytes a minute.
     """
     if log_queue is None:
         return
     root = logging.getLogger()
     root.handlers.clear()
     root.addHandler(logging.handlers.QueueHandler(log_queue))
-    root.setLevel(logging.DEBUG)
+    root.setLevel(logging.INFO)
 
 
 def lower_own_priority(priority: str) -> None:
