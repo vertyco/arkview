@@ -699,7 +699,16 @@ class ArkViewer:
         base = self.info()
         try:
             stats = await asyncio.to_thread(format_sys_info)
-            return JSONResponse(content={**base, **stats})
+            # Sidecar counts from the last successful parse. A non-zero skip
+            # count means players are missing their id and have gone invisible to
+            # every id-matched feature, so it needs to be visible without a shell.
+            parse = {
+                "profiles_loaded": cache.profiles_loaded,
+                "profiles_skipped": cache.profiles_skipped,
+                "tribes_loaded": cache.tribes_loaded,
+                "tribes_skipped": cache.tribes_skipped,
+            }
+            return JSONResponse(content={**base, **stats, "parse": parse})
         except Exception as e:
             log.exception("Failed to get system info!")
             raise HTTPException(

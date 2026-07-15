@@ -42,6 +42,15 @@ class Cache(BaseModel):
     last_export: float = 0.0
     map_last_modified: float = 0.0
 
+    # Sidecar counts from the last successful parse. Written by the parent from
+    # the child's _parse_stats.json (a child write would not cross the process
+    # boundary), and surfaced on /stats so a skipped player is visible without a
+    # shell: a skipped profile leaves the player as a blank-id tribe stub.
+    profiles_loaded: int = 0
+    profiles_skipped: int = 0
+    tribes_loaded: int = 0
+    tribes_skipped: int = 0
+
 
 cache = Cache(
     config=CONFIG,

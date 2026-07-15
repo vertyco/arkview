@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 import os
 from hashlib import md5
+from logging.handlers import QueueListener
 from time import perf_counter
 
 import orjson
@@ -10,12 +11,41 @@ import psutil
 
 from common.constants import IS_WINDOWS
 from common.models import cache  # noqa
-from common.parse_worker import run_export
+from common.parse_worker import read_parse_stats, run_export
 
 log = logging.getLogger("arkview.exporter")
 
 # Hard ceiling on a single parse (matches the old 15-minute wait budget).
 EXPORT_TIMEOUT: int = 900
+
+
+def record_parse_stats() -> None:
+    """Publish the child's sidecar counts on ``cache`` and warn on any skip.
+
+    A skipped sidecar drops a real player: they survive only as a tribe-file stub
+    with a blank id, so nothing that matches on that id can see them. That has to
+    be visible to an operator without a shell, hence both a WARNING and /stats.
+    """
+    stats = read_parse_stats(str(cache.output_dir))
+    if not stats:
+        return
+
+    cache.profiles_loaded = int(stats.get("profiles_loaded", 0))
+    cache.profiles_skipped = int(stats.get("profiles_skipped", 0))
+    cache.tribes_loaded = int(stats.get("tribes_loaded", 0))
+    cache.tribes_skipped = int(stats.get("tribes_skipped", 0))
+
+    if cache.profiles_skipped or cache.tribes_skipped:
+        skipped = stats.get("skipped", {})
+        log.warning(
+            "Parse skipped %s of %s profiles and %s of %s tribes; "
+            "skipped players lose their id and go missing from id-matched features. First failures: %s",
+            cache.profiles_skipped,
+            cache.profiles_loaded + cache.profiles_skipped,
+            cache.tribes_skipped,
+            cache.tribes_loaded + cache.tribes_skipped,
+            (skipped.get("profiles", []) + skipped.get("tribes", []))[:3],
+        )
 
 
 def apply_child_limits(pid: int, threads: int, priority: str) -> None:
@@ -186,9 +216,17 @@ async def _process_export():
     # server process stays lean.
     cluster_arg = str(cluster_dir) if cluster_dir else None
     ctx = multiprocessing.get_context("spawn")
+    # The spawn child cannot configure logging itself without a second
+    # RotatingFileHandler fighting this process over logs.log, so it ships its
+    # records here and only this process writes the file.
+    log_queue: multiprocessing.Queue = ctx.Queue()
+    listener = QueueListener(
+        log_queue, *logging.getLogger().handlers, respect_handler_level=True
+    )
+    listener.start()
     proc = ctx.Process(
         target=run_export,
-        args=(str(map_file), str(cache.output_dir), cluster_arg, priority),
+        args=(str(map_file), str(cache.output_dir), cluster_arg, priority, log_queue),
         name="arkview-parser",
         daemon=False,
     )
@@ -210,10 +248,13 @@ async def _process_export():
             log.error("Parse worker exited with code %s", proc.exitcode)
         else:
             log.info("Export completed in %s seconds", int(perf_counter() - start))
+            record_parse_stats()
     except Exception as e:
         log.error("Parse worker failed", exc_info=e)
     finally:
         cache.parse_pid = None
+        listener.stop()
+        log_queue.close()
 
     try:
         await load_outputs()
@@ -228,7 +269,10 @@ async def load_outputs(target: str = ""):
     if asv_players.exists():
         cache.last_export = asv_players.stat().st_mtime
 
-    files = list(cache.output_dir.glob("*.json"))
+    # ASV_*.json only: every export the key derivation below expects is
+    # ASV-prefixed, and the parse child drops a _parse_stats.json sidecar here
+    # that must not be served as if it were an export.
+    files = list(cache.output_dir.glob("ASV_*.json"))
     for export_file in files:
         key = export_file.stem.replace("ASV_", "").lower().strip()
         if target and target.lower() != key:
