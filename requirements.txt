@@ -1,5 +1,5 @@
-apscheduler
-arkparser>=0.7.4,<1.0.0
+﻿apscheduler
+arkparser>=0.7.5,<1.0.0
 colorama
 fastapi
 fastapi-utils>=0.8.0
