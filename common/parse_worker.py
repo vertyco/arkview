@@ -12,6 +12,7 @@ import json
 import logging
 import logging.handlers
 import multiprocessing as mp
+import shutil
 import sys
 import typing as t
 from pathlib import Path
@@ -92,6 +93,65 @@ def write_parse_stats(output_dir: str, stats: dict[str, t.Any]) -> None:
         log.debug("Could not write %s: %s", PARSE_STATS_FILE, exc)
 
 
+def prepare_scratch_copy(map_path: Path, output_dir: str) -> Path:
+    """Copy the live save into ``output_dir``/scratch and return the copy's path.
+
+    Windows only, and the reason this exists: parsing the live ``.ark`` keeps a
+    handle (and, with lazy properties, an mmap section) open on it for the whole
+    export. ARK saves by writing ``<Map>.tmp`` and renaming it over ``<Map>.ark``;
+    on Windows that replace fails while any process holds the file open without
+    FILE_SHARE_DELETE, and an active file mapping blocks it regardless of share
+    flags. ARK neither logs nor retries the failed promote, so the world simply
+    stops saving while profiles and tribes keep committing. Parsing a copy makes
+    the whole class of blocked saves impossible; the copy cost is one file per
+    parse cycle.
+
+    Pre: ``map_path`` exists. Post: the returned path exists in the scratch dir
+    with the source's mtime preserved (``WorldSave.load`` stamps ``file_mtime``
+    from it). Any leftover scratch dir from a previous parse child is purged
+    first: the previous child has exited (its handles are released), and a
+    failed in-place cleanup there must not accumulate stale multi-GB copies.
+    SQLite sidecars (``-wal``/``-shm``/``-journal``) are copied when present so
+    an ASA save opened from the scratch dir sees a consistent database.
+    """
+    assert map_path.exists(), f"source save vanished: {map_path}"
+    scratch = Path(output_dir) / "scratch"
+    if scratch.exists():
+        shutil.rmtree(scratch, ignore_errors=True)
+    scratch.mkdir(parents=True, exist_ok=True)
+    copied = Path(shutil.copy2(map_path, scratch / map_path.name))
+    for suffix in ("-wal", "-shm", "-journal"):
+        sidecar = map_path.with_name(map_path.name + suffix)
+        if sidecar.exists():
+            shutil.copy2(sidecar, scratch / sidecar.name)
+    assert copied.exists(), f"scratch copy missing after copy: {copied}"
+    return copied
+
+
+def close_save_handles(save: object) -> None:
+    """Best-effort release of a parsed save's retained file handles.
+
+    The lazy ASE reader mmaps its source and the lazy ASA path retains a SQLite
+    connection; both live for the save's lifetime and ``WorldSave`` exposes no
+    close API. Releasing them here lets the scratch dir delete cleanly on
+    Windows (rmtree fails on a still-mapped file). Best-effort only: the child
+    process exits right after the export, which releases everything regardless,
+    and the next parse purges whatever this pass could not delete.
+    """
+    reader = getattr(save, "_lazy_reader", None)
+    if reader is not None:
+        try:
+            reader.close()
+        except Exception as exc:  # noqa: BLE001 -- cleanup, never fatal
+            log.debug("Could not close lazy reader: %s", exc)
+    conn = getattr(save, "_lazy_conn", None)
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception as exc:  # noqa: BLE001 -- cleanup, never fatal
+            log.debug("Could not close lazy SQLite connection: %s", exc)
+
+
 def read_parse_stats(output_dir: str) -> dict[str, t.Any]:
     """Read back the child's sidecar counts. Returns ``{}`` when unavailable."""
     try:
@@ -132,12 +192,22 @@ def run_export(
     attach_log_queue(log_queue)
     lower_own_priority(priority)
 
-    from arkparser import Profile, Tribe, WorldSave, export_to_files
+    from arkparser import WorldSave
     from arkparser.common import get_map_config
 
     map_path = Path(map_file)
     if not map_path.exists():
         raise FileNotFoundError(f"Map file does not exist: {map_file}")
+
+    # On Windows, never parse the live save: holding it open (the lazy reader
+    # mmaps it for the whole export) blocks ARK's tmp-then-rename save promote,
+    # so the world silently stops saving. Parse a scratch copy instead. On
+    # Linux a rename succeeds over open handles, so the copy is skipped.
+    parse_path = map_path
+    scratch_dir: Path | None = None
+    if sys.platform == "win32":
+        parse_path = prepare_scratch_copy(map_path, output_dir)
+        scratch_dir = parse_path.parent
 
     # lazy_properties: property blocks parse on first access and the export
     # drivers evict them per record, so the parse child's peak RSS stays
@@ -145,7 +215,37 @@ def run_export(
     # object graph (arkparser 0.6.0; output is golden-verified identical).
     # Busy-save measurements: Fjordur PvE ASE 7.1 GB / 348 s eager ->
     # 2.5 GB / 287 s lazy; ASA TheIsland 853 MB / 38 s -> 307 MB / ~36 s.
-    save = WorldSave.load(map_file, lazy_properties=True)  # ASE or ASA, auto-detected
+    save = WorldSave.load(
+        str(parse_path), lazy_properties=True
+    )  # ASE or ASA, auto-detected
+    try:
+        run_export_stages(save, map_path, output_dir, cluster_dir, get_map_config)
+    finally:
+        if scratch_dir is not None:
+            close_save_handles(save)
+            shutil.rmtree(scratch_dir, ignore_errors=True)
+
+
+def run_export_stages(
+    save: t.Any,
+    map_path: Path,
+    output_dir: str,
+    cluster_dir: str | None,
+    get_map_config: t.Callable[[str], t.Any],
+) -> None:
+    """Attach sidecars to ``save`` and write the ASV_*.json exports.
+
+    Split from :func:`run_export` so the scratch-copy lifetime (create, parse,
+    release handles, delete) lives in one function and the export pipeline in
+    another. Pre: ``save`` is a loaded ``WorldSave``. Post: exports are written
+    to ``output_dir`` and ``_parse_stats.json`` records sidecar skip counts.
+
+    Profiles and tribes are read from the LIVE map directory, not the scratch
+    copy: ``Profile.load``/``Tribe.load`` do a full read and close the handle
+    immediately, so their block window on ARK's sidecar saves is milliseconds.
+    """
+    from arkparser import Profile, Tribe, export_to_files
+
     map_config = get_map_config(map_path.name)
 
     map_dir = map_path.parent

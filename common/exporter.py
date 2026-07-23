@@ -240,10 +240,23 @@ async def _process_export():
         if proc.is_alive():
             proc.terminate()
             await asyncio.to_thread(proc.join, 5)
-            log.warning(
-                "Parse timed out after %ss; worker terminated",
-                int(perf_counter() - start),
-            )
+            if proc.is_alive():
+                proc.kill()
+                await asyncio.to_thread(proc.join, 5)
+            if proc.is_alive():
+                # A live worker may still hold the world save open; on Windows
+                # that blocks ARK's tmp-then-rename save promote and the world
+                # silently stops saving.
+                log.error(
+                    "Parse worker PID %s survived terminate AND kill; "
+                    "it may be holding the map save open and blocking world saves",
+                    proc.pid,
+                )
+            else:
+                log.warning(
+                    "Parse timed out after %ss; worker terminated",
+                    int(perf_counter() - start),
+                )
         elif proc.exitcode != 0:
             log.error("Parse worker exited with code %s", proc.exitcode)
         else:
