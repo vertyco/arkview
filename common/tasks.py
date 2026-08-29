@@ -117,9 +117,7 @@ class ArkViewer:
             log.setLevel(logging.INFO)
         cache.asatest = settings.getboolean("ASATest", fallback=False)
         cache.port = settings.getint("Port", fallback=8000)
-        cache.reprocess_on_arkdata_update = settings.getboolean(
-            "ReprocessOnArkDataUpdate", fallback=False
-        )
+        cache.reprocess_on_arkdata_update = settings.getboolean("ReprocessOnArkDataUpdate", fallback=False)
 
         priority = settings.get("Priority", fallback="NORMAL").upper()
         if priority not in ["LOW", "BELOWNORMAL", "NORMAL", "ABOVENORMAL", "HIGH"]:
@@ -130,9 +128,7 @@ class ArkViewer:
         cpus = os.cpu_count() or 1
         cache.threads = settings.getint("Threads", fallback=2)
         if cache.threads > cpus:
-            log.warning(
-                f"Threads set to {cache.threads} but only {cpus} available, defaulting to {cpus}"
-            )
+            log.warning(f"Threads set to {cache.threads} but only {cpus} available, defaulting to {cpus}")
             cache.threads = cpus
 
         cache.api_key = settings.get("APIKey", fallback="").replace('"', "")
@@ -187,22 +183,16 @@ class ArkViewer:
                 cache.map_file = None
                 return False
             if not Path(cache.map_file).is_file():
-                log.error(
-                    "Map path must be a file, not a directory! %s", cache.map_file
-                )
+                log.error("Map path must be a file, not a directory! %s", cache.map_file)
                 cache.map_file = None
                 return False
             else:
                 cache.map_file = Path(cache.map_file)
 
-            cluster_dir = settings.get("ClusterFolderPath", fallback="").replace(
-                '"', ""
-            )
+            cluster_dir = settings.get("ClusterFolderPath", fallback="").replace('"', "")
             cache.cluster_dir = None
             if not cluster_dir:
-                log.warning(
-                    "Cluster dir has not been set, some features will be unavailable!"
-                )
+                log.warning("Cluster dir has not been set, some features will be unavailable!")
             elif not Path(cluster_dir).exists():
                 log.error("Cluster dir was set but does not exist! %s", cluster_dir)
                 return False
@@ -311,9 +301,7 @@ class ArkViewer:
         if cache.api_key:
             # Extract API key from Authorization header with proper handling
             # Support both "Bearer <token>" format and direct token
-            auth_header = request.headers.get(
-                "Authorization", request.headers.get("authorization", "")
-            )
+            auth_header = request.headers.get("Authorization", request.headers.get("authorization", ""))
             token = auth_header
 
             if auth_header.lower().startswith("bearer "):
@@ -345,24 +333,18 @@ class ArkViewer:
             if "day" in v:
                 day = v["day"]
                 time = v["time"]
-        uptime = (
-            datetime.now() - datetime.fromtimestamp(psutil.boot_time())
-        ).total_seconds()
+        uptime = (datetime.now() - datetime.fromtimestamp(psutil.boot_time())).total_seconds()
         map_name = cache.map_file.name if cache.map_file else ""
         map_path = str(cache.map_file) if cache.map_file else ""
         cluster_dir = str(cache.cluster_dir) if cache.cluster_dir else ""
         return {
-            "last_export": str(int(cache.last_export))
-            if stringify
-            else int(cache.last_export),
+            "last_export": str(int(cache.last_export)) if stringify else int(cache.last_export),
             "port": str(cache.port) if stringify else cache.port,
             "map_name": map_name if stringify else map_name,
             "map_path": map_path if stringify else map_path,
             "cluster_dir": cluster_dir if stringify else cluster_dir,
             "version": VERSION,
-            "cached_keys": ", ".join(cache.exports.keys())
-            if stringify
-            else list(cache.exports.keys()),
+            "cached_keys": ", ".join(cache.exports.keys()) if stringify else list(cache.exports.keys()),
             "day": str(day) if stringify else day,
             "time": time,
             "uptime": str(uptime) if stringify else uptime,
@@ -476,10 +458,7 @@ class ArkViewer:
                 continue
             if not isinstance(tribe["members"], list):
                 continue
-            if any(
-                str(i.get("steamid")).lower() == gameid.lower()
-                for i in tribe["members"]
-            ):
+            if any(str(i.get("steamid")).lower() == gameid.lower() for i in tribe["members"]):
                 break
         else:
             raise HTTPException(
@@ -491,9 +470,7 @@ class ArkViewer:
         for tame in tamed["data"]:
             if int(tame.get("tribeid", -1)) == tribe["tribeid"]:
                 tribe_tames.append(tame)
-        return JSONResponse(
-            content={"tamed": tribe_tames, "tribes": [tribe], **self.info()}
-        )
+        return JSONResponse(content={"tamed": tribe_tames, "tribes": [tribe], **self.info()})
 
     @router.get("/overlimit/{limit}")
     async def get_over_limit(self, request: Request, limit: int):
@@ -583,9 +560,7 @@ class ArkViewer:
                 detail="Structures/tribes data not cached yet!",
                 headers=self.info(stringify=True),
             )
-        exempt_tribes = frozenset(
-            name.strip().lower() for name in exempt.split(",") if name.strip()
-        )
+        exempt_tribes = frozenset(name.strip().lower() for name in exempt.split(",") if name.strip())
 
         def _exe():
             return compute_compliance(
@@ -608,17 +583,13 @@ class ArkViewer:
             "foundation_uu": foundation_uu,
             "exempt": sorted(exempt_tribes),
         }
-        return JSONResponse(
-            content={"compliance": compliance, "params": params, **self.info()}
-        )
+        return JSONResponse(content={"compliance": compliance, "params": params, **self.info()})
 
     @router.post("/datas")
     async def get_datas(self, request: Request, datatypes: Dtypes):
         await self.check_keys(request)
         global cache
-        invalid_types = [
-            datatype for datatype in datatypes.dtypes if datatype not in VALID_DATATYPES
-        ]
+        invalid_types = [datatype for datatype in datatypes.dtypes if datatype not in VALID_DATATYPES]
 
         if invalid_types:
             joined_valid = ", ".join(VALID_DATATYPES)
@@ -670,12 +641,16 @@ class ArkViewer:
         flagged_tribes = []
         found_tribes = set()
         for tame in tamed["data"]:
-            if tame.get("tamedServer") is None:
+            tamed_server = tame.get("tamedServer", "")
+            uploaded_server = tame.get("uploadedServer", "")
+
+            servername = tamed_server or uploaded_server
+            if not servername:
                 continue
-            if not tame.get("tamedServer", "").strip():
+            servername = servername.lower().strip()
+            if not servername:
                 continue
-            server = tame["tamedServer"].lower()
-            if server in valid_servers:
+            if servername in valid_servers:
                 continue
             if tame["creature"] in IGNORED_DINO_PATHS:
                 continue
@@ -689,9 +664,7 @@ class ArkViewer:
             if tribe["tribeid"] in found_tribes:
                 flagged_tribes.append(tribe)
 
-        return JSONResponse(
-            content={"tamed": flagged_tames, "tribes": flagged_tribes, **self.info()}
-        )
+        return JSONResponse(content={"tamed": flagged_tames, "tribes": flagged_tribes, **self.info()})
 
     @router.get("/stats")
     async def get_system_info(self, request: Request):
@@ -711,6 +684,4 @@ class ArkViewer:
             return JSONResponse(content={**base, **stats, "parse": parse})
         except Exception as e:
             log.exception("Failed to get system info!")
-            raise HTTPException(
-                status_code=500, detail=str(e), headers=self.info(stringify=True)
-            )
+            raise HTTPException(status_code=500, detail=str(e), headers=self.info(stringify=True))
