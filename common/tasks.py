@@ -24,6 +24,7 @@ from common.constants import (
     VALID_DATATYPES,
 )
 from common.exporter import export_loop, load_outputs, process_export
+from common.filters import filter_tamed, filter_wild
 from common.logger import init_sentry
 from common.models import Banlist, Dtypes, ServerNames, cache  # noqa
 from common.scheduler import scheduler
@@ -665,6 +666,47 @@ class ArkViewer:
                 flagged_tribes.append(tribe)
 
         return JSONResponse(content={"tamed": flagged_tames, "tribes": flagged_tribes, **self.info()})
+
+    @router.get("/data/filter/tamed")
+    async def filter_tamed_data(
+        self,
+        request: Request,
+        tribe_id: int | None = None,
+        class_name: str | None = None,
+        is_cryo: bool | None = None,
+    ):
+        """Tamed rows filtered by tribe id, creature class substring and cryo state"""
+        await self.check_keys(request)
+        global cache
+        tamed = cache.exports.get("tamed")
+        if not tamed:
+            raise HTTPException(
+                status_code=404,
+                detail="Tamed data not cached yet!",
+                headers=self.info(stringify=True),
+            )
+        rows = await asyncio.to_thread(filter_tamed, tamed["data"], tribe_id, class_name, is_cryo)
+        return JSONResponse(content={"tamed": rows, **self.info()})
+
+    @router.get("/data/filter/wild")
+    async def filter_wild_data(
+        self,
+        request: Request,
+        class_name: str | None = None,
+        tameable: bool | None = None,
+    ):
+        """Wild rows filtered by creature class substring and tameable state"""
+        await self.check_keys(request)
+        global cache
+        wild = cache.exports.get("wild")
+        if not wild:
+            raise HTTPException(
+                status_code=404,
+                detail="Wild data not cached yet!",
+                headers=self.info(stringify=True),
+            )
+        rows = await asyncio.to_thread(filter_wild, wild["data"], class_name, tameable)
+        return JSONResponse(content={"wild": rows, **self.info()})
 
     @router.get("/stats")
     async def get_system_info(self, request: Request):
