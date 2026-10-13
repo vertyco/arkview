@@ -181,10 +181,11 @@ def run_export(
     ``ASV_Tamed.json`` (matching the old ``all "<map>" "<cluster>" "<out>"``
     invocation).
 
-    Player and tribe data live in ``.arkprofile`` / ``.arktribe`` sidecars
-    alongside the map (not in the world save itself), so they are loaded from
-    the map's directory and attached to ``save`` before exporting -- the same
-    directory scan the C# exporter did. A single corrupt sidecar is skipped
+    Player and tribe data normally live in ``.arkprofile`` / ``.arktribe``
+    sidecars alongside the map, so they are loaded from the map's directory and
+    attached to ``save`` before exporting -- the same directory scan the C#
+    exporter did. When the folder has none, the copies some ASA servers pack
+    inside the save are used instead. A single corrupt sidecar is skipped
     rather than failing the whole parse -- so the skip count is written to
     ``_parse_stats.json`` and the skips are logged over ``log_queue``, because a
     silent skip means a player vanishes from every id-matched feature.
@@ -224,6 +225,40 @@ def run_export(
         if scratch_dir is not None:
             close_save_handles(save)
             shutil.rmtree(scratch_dir, ignore_errors=True)
+
+
+def attach_embedded_store(
+    save: t.Any,
+    profiles_skipped: list[dict[str, str]],
+    tribes_skipped: list[dict[str, str]],
+) -> bool:
+    """Attach the profile/tribe files packed inside the save, if it has any.
+
+    Some ASA servers (Nitrado observed) write no .arkprofile / .arktribe files
+    and keep the same data inside the .ark. Pre: ``save`` is a loaded
+    ``WorldSave`` with no sidecars attached. Post: returns True and sets
+    ``save.profiles`` / ``save.tribes`` when the store held anything; bad
+    entries land in the skipped lists either way. Never raises for bad store
+    data (arkparser records it instead).
+    """
+    assert not save.profiles and not save.tribes, "sidecars already attached"
+    store = save.read_embedded_store()
+    for error in store.errors:
+        log.warning("Embedded player/tribe store: %s", error)
+        target = tribes_skipped if error.startswith("tribe") else profiles_skipped
+        target.append({"file": "(in save)", "error": error})
+    if not store.profiles and not store.tribes:
+        return False
+    save.profiles = store.profiles
+    save.tribes = store.tribes
+    log.info(
+        "Loaded player/tribe data from inside the save: profiles=%d tribes=%d (skipped %d old copies)",
+        len(store.profiles),
+        len(store.tribes),
+        store.superseded_profiles + store.superseded_tribes,
+    )
+    assert save.profiles or save.tribes, "store attach left nothing attached"
+    return True
 
 
 def run_export_stages(
@@ -274,12 +309,18 @@ def run_export_stages(
     save.tribes = tribes
 
     log.info("Loaded sidecars: profiles=%d tribes=%d", len(profiles), len(tribes))
+    # Sidecar files always win. Only a map folder with none falls back to the
+    # copies some servers pack inside the save itself.
+    source = "files" if profiles or tribes else "none"
+    if source == "none" and attach_embedded_store(save, profiles_skipped, tribes_skipped):
+        source = "save"
     write_parse_stats(
         output_dir,
         {
-            "profiles_loaded": len(profiles),
+            "player_data_source": source,
+            "profiles_loaded": len(save.profiles),
             "profiles_skipped": len(profiles_skipped),
-            "tribes_loaded": len(tribes),
+            "tribes_loaded": len(save.tribes),
             "tribes_skipped": len(tribes_skipped),
             "skipped": {
                 "profiles": profiles_skipped[:50],

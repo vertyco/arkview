@@ -30,6 +30,7 @@ def record_parse_stats() -> None:
     if not stats:
         return
 
+    cache.player_data_source = str(stats.get("player_data_source", "none"))
     cache.profiles_loaded = int(stats.get("profiles_loaded", 0))
     cache.profiles_skipped = int(stats.get("profiles_skipped", 0))
     cache.tribes_loaded = int(stats.get("tribes_loaded", 0))

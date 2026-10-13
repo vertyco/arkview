@@ -43,6 +43,8 @@ Port = 8000
 # ASE: .../Saved/SavedArks/TheIsland.ark
 # ASA: .../Saved/SavedArks/TheIsland_WP/TheIsland_WP.ark
 # Player (.arkprofile) and tribe (.arktribe) files are read from the same directory.
+# ASA servers that write none of those files (some hosts keep that data inside the
+# .ark instead) are read from the .ark alone. If any of those files exist, they win.
 MapFilePath = path/to/your/map.ark
 
 # (Optional) Direct path to the cluster/solecluster folder

@@ -718,6 +718,7 @@ class ArkViewer:
             # count means players are missing their id and have gone invisible to
             # every id-matched feature, so it needs to be visible without a shell.
             parse = {
+                "player_data_source": cache.player_data_source,
                 "profiles_loaded": cache.profiles_loaded,
                 "profiles_skipped": cache.profiles_skipped,
                 "tribes_loaded": cache.tribes_loaded,

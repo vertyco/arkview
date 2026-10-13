@@ -46,6 +46,8 @@ class Cache(BaseModel):
     # the child's _parse_stats.json (a child write would not cross the process
     # boundary), and surfaced on /stats so a skipped player is visible without a
     # shell: a skipped profile leaves the player as a blank-id tribe stub.
+    # "files" (sidecars), "save" (packed inside the .ark), or "none".
+    player_data_source: str = "none"
     profiles_loaded: int = 0
     profiles_skipped: int = 0
     tribes_loaded: int = 0
