@@ -5,7 +5,7 @@ import os
 import sys
 from collections import defaultdict
 from configparser import ConfigParser
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import psutil
@@ -262,7 +262,9 @@ class ArkViewer:
                 process_export,
                 trigger="interval",
                 seconds=5,
-                next_run_time=datetime.now() + timedelta(seconds=5),
+                # Must be timezone-aware: a naive local time is read in the scheduler's
+                # US/Eastern zone, which delays the first parse by the PC's offset from Eastern.
+                next_run_time=datetime.now(timezone.utc) + timedelta(seconds=5),
                 id="Handler.exporter",
                 max_instances=1,
             )
